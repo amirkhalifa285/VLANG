@@ -1,0 +1,31 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "build vlangc",
+            "type": "shell",
+            "command": "make",
+            "options": {
+                "cwd": "${workspaceFolder}/VlangCompiler"
+            },
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": [
+                "$gcc"
+            ],
+            "detail": "Runs make to build the vlang compiler"
+        },
+        {
+            "label": "clean vlangc",
+            "type": "shell",
+            "command": "make clean",
+            "options": {
+                "cwd": "${workspaceFolder}/VlangCompiler"
+            },
+            "problemMatcher": [],
+            "detail": "Runs make clean to remove build artifacts"
+        }
+    ]
+}

@@ -1,0 +1,22 @@
+{
+    scl x;
+    scl y;
+    vec v{5};
+    
+    x = 10;
+    y = x * 2;
+    v = [1, 2, 3, 4, 5];
+    
+    print "X value": x;
+    print "Y value": y;
+    print "Vector": v;
+    
+    loop 3 {
+        x = x + 1;
+        print "X in loop": x;
+    }
+    
+    if x {
+        print "X is non-zero": x;
+    }
+}

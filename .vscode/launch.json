@@ -1,0 +1,48 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Launch vlangc with test.vlang",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "bash",
+      "args": [
+        "-c",
+        "\"${workspaceFolder}/VlangCompiler/vlangc < ${workspaceFolder}/VlangCompiler/test.vlang\""
+      ],
+      "stopAtEntry": false,
+      "cwd": "${workspaceFolder}/VlangCompiler",
+      "environment": [],
+      "externalConsole": false,
+      "MIMode": "gdb",
+      "miDebuggerPath": "gdb.exe",
+      "setupCommands": [
+        {
+          "description": "Enable pretty-printing for gdb",
+          "text": "-enable-pretty-printing",
+          "ignoreFailures": true
+        }
+      ],
+      "preLaunchTask": "build vlangc"
+    },
+    {
+      "name": "C/C++ Runner: Debug Session",
+      "type": "cppdbg",
+      "request": "launch",
+      "args": [],
+      "stopAtEntry": false,
+      "externalConsole": true,
+      "cwd": "c:/Users/amirk/OneDrive/Desktop/projects/VLANG/VlangCompiler",
+      "program": "c:/Users/amirk/OneDrive/Desktop/projects/VLANG/VlangCompiler/build/Debug/outDebug",
+      "MIMode": "gdb",
+      "miDebuggerPath": "gdb",
+      "setupCommands": [
+        {
+          "description": "Enable pretty-printing for gdb",
+          "text": "-enable-pretty-printing",
+          "ignoreFailures": true
+        }
+      ]
+    }
+  ]
+}
