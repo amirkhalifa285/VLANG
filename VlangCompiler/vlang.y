@@ -1,59 +1,3 @@
-%{
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include "symTab.h"
-
-extern int yylex();
-void yyerror(const char *s);
-
-// Code generation functions
-void generate_code(ast_node *node);
-void generate_declaration(ast_node *node);
-void generate_assignment(ast_node *node);
-void generate_expression(ast_node *node);
-void generate_print(ast_node *node);
-void generate_if(ast_node *node);
-void generate_loop(ast_node *node);
-void generate_vec_literal(ast_node *node);
-void generate_vec_assignment(char *var_name, ast_node *vec_node, int size);
-void generate_vec_assignment_with_declaration(char *var_name, ast_node *vec_node, int size);
-void generate_scalar_assignment_with_declaration(char *var_name, ast_node *expr_node);
-void generate_code_with_declarations(ast_node *node);
-void declare_variable_if_needed(char *var_name);
-
-static int temp_var_count = 0;
-static int label_count = 0;
-static int declared_vars[100] = {0}; // Track which variables have been declared
-
-#define YYSTYPE_IS_DECLARED
-typedef union YYSTYPE
-{
-    int ival;
-    char *sval;
-    ast_node *node;
-} YYSTYPE;
-
-%}
-
-%union {
-    int ival;
-    char *sval;
-    ast_node *node;
-}
-
-%token <ival> SCL VEC IF LOOP PRINT
-%token <sval> ID STRING_LITERAL
-%token <ival> INT_LITERAL
-%token AT ADD SUB MUL DIV ASSIGN
-%token LBRACE RBRACE LPAREN RPAREN LBRACK RBRACK COLON SEMI COMMA
-
-%type <node> program block statement_list statement declaration assignment conditional_statement loop_statement print_statement expression expression_list term factor vec_literal int_list
-
-%right COLON
-%left AT
-%left MUL DIV
-%left ADD SUB
 %nonassoc ASSIGN
 
 %%
@@ -163,19 +107,50 @@ int main(int argc, char *argv[]) {
     
     int result = yyparse();
     if (result == 0) {
-        printf("#include <stdio.h>\n");
-        printf("#include <stdlib.h>\n");
-        printf("#include <string.h>\n\n");
+        // Generate C code to a temporary file
+        FILE *c_file = fopen("temp_output.c", "w");
+        if (!c_file) {
+            fprintf(stderr, "Cannot create temporary C file\n");
+            return 1;
+        }
         
-        printf("int main() {\n");
+        // Write C code to file
+        fprintf(c_file, "#include <stdio.h>\n");
+        fprintf(c_file, "#include <stdlib.h>\n");
+        fprintf(c_file, "#include <string.h>\n\n");
+        
+        fprintf(c_file, "int main() {\n");
         
         // Generate code from AST with smart declaration handling
         if (root_node) {
+            // Set global file pointer for code generation
+            output_file = c_file;
             generate_code_with_declarations(root_node);
         }
         
-        printf("    return 0;\n");
-        printf("}\n");
+        fprintf(c_file, "    return 0;\n");
+        fprintf(c_file, "}\n");
+        
+        fclose(c_file);
+        
+        // Compile the C code
+        fprintf(stderr, "Compiling generated C code...\n");
+        int compile_result = system("gcc temp_output.c -o temp_program.exe");
+        if (compile_result != 0) {
+            fprintf(stderr, "Compilation failed!\n");
+            return 1;
+        }
+        
+        // Run the executable
+        fprintf(stderr, "Running compiled program:\n");
+        fprintf(stderr, "------------------------\n");
+        int run_result = system("temp_program.exe");
+        
+        // Clean up temporary files
+        remove("temp_output.c");
+        remove("temp_program.exe");
+        
+        return run_result;
     }
     return result;
 }
@@ -215,20 +190,33 @@ void generate_assignment(ast_node *node) {
             generate_vec_assignment_with_declaration(node->left->name, node->right, sym->size);
         } else if (sym && sym->type == VEC_TYPE && node->right->type == INT_LITERAL_NODE) {
             // Scalar to vector assignment: v = 5 (assigns 5 to all elements)
-            printf("    for(int i = 0; i < %d; i++) %s[i] = ", sym->size, node->left->name);
+            declare_variable_if_needed(node->left->name);
+            fprintf(output_file, "    for(int i = 0; i < %d; i++) %s[i] = ", sym->size, node->left->name);
             generate_expression(node->right);
-            printf(";\n");
+            fprintf(output_file, ";\n");
+        } else if (sym && sym->type == VEC_TYPE && (node->right->type == ADD_NODE || node->right->type == SUB_NODE || node->right->type == MUL_NODE || node->right->type == DIV_NODE)) {
+            // Vector arithmetic assignment: v3 = v1+v2
+            declare_variable_if_needed(node->left->name);
+            fprintf(output_file, "    for(int i = 0; i < %d; i++) %s[i] = ", sym->size, node->left->name);
+            generate_expression(node->right);
+            fprintf(output_file, ";\n");
+        } else if (sym && sym->type == VEC_TYPE) {
+            // Vector assignment with expression (like v1 = 2*x)
+            declare_variable_if_needed(node->left->name);
+            fprintf(output_file, "    for(int i = 0; i < %d; i++) %s[i] = ", sym->size, node->left->name);
+            generate_expression(node->right);
+            fprintf(output_file, ";\n");
         } else {
             // Simple scalar assignment: x = expression
             generate_scalar_assignment_with_declaration(node->left->name, node->right);
         }
     } else if (node->left->type == COLON_NODE) {
         // Vector indexing assignment: v:i = expression
-        printf("    %s[", node->left->left->name);
+        fprintf(output_file, "    %s[", node->left->left->name);
         generate_expression(node->left->right);
-        printf("] = ");
+        fprintf(output_file, "] = ");
         generate_expression(node->right);
-        printf(";\n");
+        fprintf(output_file, ";\n");
     }
 }
 
@@ -237,51 +225,38 @@ void generate_expression(ast_node *node) {
     
     switch (node->type) {
         case INT_LITERAL_NODE:
-            printf("%s", node->name);
+            fprintf(output_file, "%s", node->name);
             break;
         case ID_NODE:
-            printf("%s", node->name);
+            fprintf(output_file, "%s", node->name);
             break;
         case ADD_NODE:
-            printf("(");
-            generate_expression(node->left);
-            printf(" + ");
-            generate_expression(node->right);
-            printf(")");
-            break;
         case SUB_NODE:
-            printf("(");
-            generate_expression(node->left);
-            printf(" - ");
-            generate_expression(node->right);
-            printf(")");
-            break;
         case MUL_NODE:
-            printf("(");
-            generate_expression(node->left);
-            printf(" * ");
-            generate_expression(node->right);
-            printf(")");
-            break;
         case DIV_NODE:
-            printf("(");
+            fprintf(output_file, "(");
             generate_expression(node->left);
-            printf(" / ");
+            switch(node->type) {
+                case ADD_NODE: fprintf(output_file, " + "); break;
+                case SUB_NODE: fprintf(output_file, " - "); break;
+                case MUL_NODE: fprintf(output_file, " * "); break;
+                case DIV_NODE: fprintf(output_file, " / "); break;
+            }
             generate_expression(node->right);
-            printf(")");
+            fprintf(output_file, ")");
             break;
         case VEC_LITERAL_NODE:
             generate_vec_literal(node);
             break;
         case COLON_NODE:
             // Vector indexing: v:i
-            printf("%s[", node->left->name);
+            fprintf(output_file, "%s[", node->left->name);
             generate_expression(node->right);
-            printf("]");
+            fprintf(output_file, "]");
             break;
         case AT_NODE:
-            // Dot product - need to generate a loop
-            printf("dot_product_%d", temp_var_count++);
+            // Dot product - generate inline calculation
+            generate_dot_product(node);
             break;
         default:
             break;
@@ -289,59 +264,63 @@ void generate_expression(ast_node *node) {
 }
 
 void generate_vec_literal(ast_node *node) {
-    // For vector literals like [1,2,3], we need to assign each element
-    // This is a simplified version - in practice you'd need to handle the target variable
-    printf("/* vector literal */");
+    int temp_id = temp_var_count++;
+    fprintf(output_file, "({ int temp_vec_%d[] = {", temp_id);
+
+    char *values[100];
+    int value_count = 0;
+    
+    ast_node *current = node->left;
+    values[value_count++] = current->name;
+    
+    current = node->right;
+    collect_int_list_values(current, values, &value_count, 100);
+    
+    for (int i = 0; i < value_count; i++) {
+        if (i > 0) fprintf(output_file, ", ");
+        fprintf(output_file, "%s", values[i]);
+    }
+    
+    fprintf(output_file, "}; temp_vec_%d; })", temp_id);
 }
 
 void generate_print(ast_node *node) {
-    printf("    printf(\"%s: ", node->left->name);
-    
-    // Handle expression list - check if it's a vector or scalar
     ast_node *expr = node->right;
+    symbol *sym = NULL;
+
     if (expr->type == ID_NODE) {
-        symbol *sym = get_symbol(expr->name);
-        if (sym && sym->type == VEC_TYPE) {
-            // Print vector
-            printf("[");
-            for (int i = 0; i < sym->size; i++) {
-                if (i > 0) printf(", ");
-                printf("%%d");
-            }
-            printf("]\\n\"");
-            for (int i = 0; i < sym->size; i++) {
-                printf(", %s[%d]", expr->name, i);
-            }
-            printf(");\n");
-        } else {
-            // Print scalar
-            printf("%%d\\n\", ");
-            generate_expression(expr);
-            printf(");\n");
-        }
+        sym = get_symbol(expr->name);
+    }
+
+    if (sym && sym->type == VEC_TYPE) {
+        fprintf(output_file, "    printf(\"%s: [\"");\n", node->left->name);
+        fprintf(output_file, "    for (int i = 0; i < %d; i++) {\n", sym->size);
+        fprintf(output_file, "        if (i > 0) printf(\", \");\n");
+        fprintf(output_file, "        printf(\"%%d\", %s[i]);\n", expr->name);
+        fprintf(output_file, "    }\n");
+        fprintf(output_file, "    printf(\"]\\n\");\n");
     } else {
-        // Print expression result
-        printf("%%d\\n\", ");
+        fprintf(output_file, "    printf(\"%s: %%d\\n\", ", node->left->name);
         generate_expression(expr);
-        printf(");\n");
+        fprintf(output_file, ");\n");
     }
 }
 
 void generate_if(ast_node *node) {
-    printf("    if (");
+    fprintf(output_file, "    if (");
     generate_expression(node->left);
-    printf(") {\n");
-    generate_code(node->right);
-    printf("    }\n");
+    fprintf(output_file, ") {\n");
+    generate_code_with_declarations(node->right);
+    fprintf(output_file, "    }\n");
 }
 
 void generate_loop(ast_node *node) {
     int loop_label = label_count++;
-    printf("    for (int loop_var_%d = 0; loop_var_%d < ", loop_label, loop_label);
+    fprintf(output_file, "    for (int loop_var_%d = 0; loop_var_%d < ", loop_label, loop_label);
     generate_expression(node->left);
-    printf("; loop_var_%d++) {\n", loop_label);
-    generate_code(node->right);
-    printf("    }\n");
+    fprintf(output_file, "; loop_var_%d++) {\n", loop_label);
+    generate_code_with_declarations(node->right);
+    fprintf(output_file, "    }\n");
 }
 
 void generate_vec_assignment(char *var_name, ast_node *vec_node, int size) {
@@ -350,16 +329,16 @@ void generate_vec_assignment(char *var_name, ast_node *vec_node, int size) {
     ast_node *current = vec_node->left; // First element
     
     // Assign first element
-    printf("    %s[%d] = %s;\n", var_name, index++, current->name);
+    fprintf(output_file, "    %s[%d] = %s;\n", var_name, index++, current->name);
     
     // Assign remaining elements from the list
     current = vec_node->right; // The int_list part
     while (current && index < size) {
         if (current->type == COMMA_NODE) {
-            printf("    %s[%d] = %s;\n", var_name, index++, current->right->name);
+            fprintf(output_file, "    %s[%d] = %s;\n", var_name, index++, current->right->name);
             current = current->left;
         } else {
-            printf("    %s[%d] = %s;\n", var_name, index++, current->name);
+            fprintf(output_file, "    %s[%d] = %s;\n", var_name, index++, current->name);
             break;
         }
     }
@@ -380,9 +359,9 @@ void declare_variable_if_needed(char *var_name) {
     
     if (sym_index >= 0 && !declared_vars[sym_index]) {
         if (sym->type == SCL_TYPE) {
-            printf("    int %s;\n", var_name);
+            fprintf(output_file, "    int %s;\n", var_name);
         } else if (sym->type == VEC_TYPE) {
-            printf("    int %s[%d];\n", var_name, sym->size);
+            fprintf(output_file, "    int %s[%d];\n", var_name, sym->size);
         }
         declared_vars[sym_index] = 1;
     }
@@ -428,15 +407,15 @@ void generate_scalar_assignment_with_declaration(char *var_name, ast_node *expr_
     
     if (sym_index >= 0 && !declared_vars[sym_index]) {
         // Combine declaration and initialization
-        printf("    int %s = ", var_name);
+        fprintf(output_file, "    int %s = ", var_name);
         generate_expression(expr_node);
-        printf(";\n");
+        fprintf(output_file, ";\n");
         declared_vars[sym_index] = 1;
     } else {
         // Variable already declared, just assign
-        printf("    %s = ", var_name);
+        fprintf(output_file, "    %s = ", var_name);
         generate_expression(expr_node);
-        printf(";\n");
+        fprintf(output_file, ";\n");
     }
 }
 
@@ -455,30 +434,98 @@ void generate_vec_assignment_with_declaration(char *var_name, ast_node *vec_node
     
     if (sym_index >= 0 && !declared_vars[sym_index]) {
         // Generate vector declaration with initialization
-        printf("    int %s[%d] = {", var_name, size);
+        fprintf(output_file, "    int %s[%d] = {", var_name, size);
         
-        // Extract values from AST
-        ast_node *current = vec_node->left; // First element
-        printf("%s", current->name);
+        // Extract values from AST - need to collect all values first to print in correct order
+        char *values[size];
+        int value_count = 0;
         
-        // Add remaining elements from the list
-        current = vec_node->right; // The int_list part
-        int count = 1;
-        while (current && count < size) {
-            if (current->type == COMMA_NODE) {
-                printf(", %s", current->right->name);
-                current = current->left;
-            } else {
-                printf(", %s", current->name);
-                break;
-            }
-            count++;
+        // Get first element
+        ast_node *current = vec_node->left;
+        values[value_count++] = current->name;
+        
+        // Get remaining elements from the int_list
+        current = vec_node->right;
+        collect_int_list_values(current, values, &value_count, size);
+        
+        // Print all values in correct order
+        for (int i = 0; i < value_count && i < size; i++) {
+            if (i > 0) fprintf(output_file, ", ");
+            fprintf(output_file, "%s", values[i]);
         }
         
-        printf("};\n");
+        fprintf(output_file, "};\n");
         declared_vars[sym_index] = 1;
     } else {
         // Variable already declared, use individual assignments
         generate_vec_assignment(var_name, vec_node, size);
+    }
+}
+
+void collect_int_list_values(ast_node *node, char **values, int *count, int max_size) {
+    if (!node || *count >= max_size) return;
+    
+    if (node->type == COMMA_NODE) {
+        // Recursively collect from left side first (this maintains order)
+        collect_int_list_values(node->left, values, count, max_size);
+        // Then add the right side value
+        if (node->right && *count < max_size) {
+            values[(*count)++] = node->right->name;
+        }
+    } else {
+        // Single value node
+        values[(*count)++] = node->name;
+    }
+}
+
+void generate_dot_product(ast_node *node) {
+    // Generate dot product calculation: left @ right
+    // This creates a temporary variable and calculates the sum
+    int temp_id = temp_var_count++;
+    
+    // Get vector sizes - assume both vectors have same size for now
+    symbol *left_sym = NULL;
+    int vec_size = 0;
+    
+    if (node->left->type == ID_NODE) {
+        left_sym = get_symbol(node->left->name);
+        if (left_sym && left_sym->type == VEC_TYPE) {
+            vec_size = left_sym->size;
+        }
+    } else if (node->left->type == VEC_LITERAL_NODE) {
+        // A bit of a hack, we don't know the size of the literal here easily.
+        // We'll assume a size, or we need to pass it down the AST.
+        // For now, let's assume the size is known from the other operand if it's a variable.
+        if(node->right->type == ID_NODE) {
+            symbol *right_sym = get_symbol(node->right->name);
+            if(right_sym && right_sym->type == VEC_TYPE) {
+                vec_size = right_sym->size;
+            }
+        }
+    }
+
+
+    
+    // Generate inline dot product calculation
+    fprintf(output_file, "({int dot_sum_%d = 0; for(int dot_i_%d = 0; dot_i_%d < %d; dot_i_%d++) { dot_sum_%d += ", 
+            temp_id, temp_id, temp_id, vec_size, temp_id, temp_id);
+    
+    generate_expression(node->left);
+    fprintf(output_file, "[dot_i_%d] * ", temp_id);
+    generate_expression(node->right);
+    fprintf(output_file, "[dot_i_%d]; } dot_sum_%d; })", temp_id, temp_id);
+}
+
+void generate_print_expressions(ast_node *node) {
+    // Handle comma-separated expressions in print statements
+    if (node->type == COMMA_NODE) {
+        generate_print_expressions(node->left);
+        fprintf(output_file, "    printf(\", \");\n");
+        generate_print_expressions(node->right);
+    } else {
+        // Print expression result
+        fprintf(output_file, "    printf(\"%%d\", ");
+        generate_expression(node);
+        fprintf(output_file, ");\n");
     }
 }
