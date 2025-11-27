@@ -1,34 +1,35 @@
-CC = gcc
-CFLAGS = -w
-TARGET = vlangc.exe
+# Makefile for Vlang Compiler on Windows (C++ version)
+LEX     = flex
+YACC    = bison
+CXX     = g++
+CXXFLAGS = -Wall -std=c++11
 
-ifeq ($(OS),Windows_NT)
-    RM = del /f
-    EXE = .exe
-else
-    RM = rm -f
-    EXE =
-endif
+all: vlang.exe
 
-$(TARGET): y.tab.o lex.yy.o symTab.o
-	$(CC) $(CFLAGS) -o $(TARGET) y.tab.o lex.yy.o symTab.o
+vlang.exe: parser.tab.c lex.yy.c
+	$(CXX) $(CXXFLAGS) -o $@ $^
 
-y.tab.o: y.tab.c
-	$(CC) $(CFLAGS) -c y.tab.c
+parser.tab.c parser.tab.h: parser.y
+	$(YACC) -d $<
 
-lex.yy.o: lex.yy.c
-	$(CC) $(CFLAGS) -c lex.yy.c
+lex.yy.c: lexer.l
+	$(LEX) $<
 
-symTab.o: symTab.c
-	$(CC) $(CFLAGS) -c symTab.c
+# 1) הפעלת המהדר -> output.cpp
+generate: vlang.exe example.vlang
+	vlang.exe < example.vlang
+	@echo "✓ generated output.cpp"
 
-y.tab.c: vlang.y
-	bison -y -d vlang.y
+# 2) קומפילציית C++ -> program.exe (שימו לב ל‑runtime.cpp)
+compile-cpp: generate runtime.cpp
+	$(CXX) $(CXXFLAGS) -o program.exe output.cpp runtime.cpp
+	@echo "✓ compiled program.exe"
 
-lex.yy.c: vlang.l
-	flex vlang.l
+# 3) הרצה
+run-cpp: compile-cpp
+	program.exe
 
+# שרשור נוח
+test: run-cpp
 clean:
-	$(RM) vlangc$(EXE) *.o y.tab.c y.tab.h lex.yy.c
-
-.PHONY: clean
+	cmd /C "del /Q lex.yy.c parser.tab.c parser.tab.h vlang.exe output.cpp program.exe 2>nul || exit 0"

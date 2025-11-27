@@ -39,56 +39,38 @@
    /* Put the tokens into the symbol table, so that GDB and other debuggers
       know about them.  */
    enum yytokentype {
-     SCL = 258,
-     VEC = 259,
-     IF = 260,
-     LOOP = 261,
-     PRINT = 262,
-     ID = 263,
-     STRING_LITERAL = 264,
-     INT_LITERAL = 265,
-     AT = 266,
-     ADD = 267,
-     SUB = 268,
-     MUL = 269,
-     DIV = 270,
-     ASSIGN = 271,
-     LBRACE = 272,
-     RBRACE = 273,
-     LPAREN = 274,
-     RPAREN = 275,
-     LBRACK = 276,
-     RBRACK = 277,
-     COLON = 278,
-     SEMI = 279,
-     COMMA = 280
+     INT = 258,
+     ID = 259,
+     STRING = 260,
+     SCL = 261,
+     VEC = 262,
+     LOOP = 263,
+     IF = 264,
+     PRINT = 265,
+     LBRACE = 266,
+     RBRACE = 267,
+     LPAREN = 268,
+     RPAREN = 269,
+     LBRACK = 270,
+     RBRACK = 271,
+     COLON = 272,
+     SEMICOLON = 273,
+     COMMA = 274,
+     ASSIGN = 275,
+     PLUS = 276,
+     MINUS = 277,
+     TIMES = 278,
+     DIVIDE = 279,
+     DOTPROD = 280,
+     UNKNOWN = 281,
+     EQ = 282,
+     NE = 283,
+     LT = 284,
+     LE = 285,
+     GT = 286,
+     GE = 287
    };
 #endif
-/* Tokens.  */
-#define SCL 258
-#define VEC 259
-#define IF 260
-#define LOOP 261
-#define PRINT 262
-#define ID 263
-#define STRING_LITERAL 264
-#define INT_LITERAL 265
-#define AT 266
-#define ADD 267
-#define SUB 268
-#define MUL 269
-#define DIV 270
-#define ASSIGN 271
-#define LBRACE 272
-#define RBRACE 273
-#define LPAREN 274
-#define RPAREN 275
-#define LBRACK 276
-#define RBRACK 277
-#define COLON 278
-#define SEMI 279
-#define COMMA 280
-
 
 
 
@@ -97,16 +79,27 @@ typedef union YYSTYPE
 {
 
 /* Line 1676 of yacc.c  */
-#line 43 "vlang.y"
+#line 74 "parser.y"
 
-    int ival;
-    char *sval;
-    ast_node *node;
+    int    ival;
+    char  *sval;
+    struct{
+        char *setup;          /* C stmts that must run first */
+        char *code;           /* the C expression itself    */
+        char *left,*right;    /* raw operands (analysis)    */
+        char  op;             /* '+','-','*','/','@',0      */
+    } expr;
+    struct{
+        char *setup;          /* setup for print list */
+        char *code;           /* comma‑separated args */
+        int   count;          /* number of args       */
+    } plist;
+    char *blockcode;          /* generated C for stmt/block */
 
 
 
 /* Line 1676 of yacc.c  */
-#line 110 "y.tab.h"
+#line 103 "parser.tab.h"
 } YYSTYPE;
 # define YYSTYPE_IS_TRIVIAL 1
 # define yystype YYSTYPE /* obsolescent; will be withdrawn */

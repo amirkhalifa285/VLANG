@@ -68,51 +68,79 @@
 /* Copy the first part of user declarations.  */
 
 /* Line 189 of yacc.c  */
-#line 1 "vlang.y"
+#line 1 "parser.y"
 
+/* -------------------------------------------------------------------------- */
+/*  Prologue – headers, helpers & symbol table                                */
+/* -------------------------------------------------------------------------- */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "symTab.h"
+#include <stdbool.h>
 
-extern int yylex();
+FILE *out;
 void yyerror(const char *s);
+int  yylex();
 
-// Code generation functions
-void generate_code(ast_node *node);
-void generate_declaration(ast_node *node);
-void generate_assignment(ast_node *node);
-void generate_expression(ast_node *node);
-void generate_print(ast_node *node);
-void generate_if(ast_node *node);
-void generate_loop(ast_node *node);
-void generate_vec_literal(ast_node *node);
-void generate_vec_assignment(char *var_name, ast_node *vec_node, int size);
-void generate_vec_assignment_with_declaration(char *var_name, ast_node *vec_node, int size);
-void generate_scalar_assignment_with_declaration(char *var_name, ast_node *expr_node);
-void generate_code_with_declarations(ast_node *node);
-void declare_variable_if_needed(char *var_name);
-void collect_int_list_values(ast_node *node, char **values, int *count, int max_size);
-void generate_dot_product(ast_node *node);
-void generate_print_expressions(ast_node *node);
+/* ---------------- symbol table ---------------- */
+char current_vec_name[64] = "";
+int  current_vec_size     = 0;
+int temp_id_counter = 0;
+struct {
+    char name[64];
+    int  is_vector;
+    int  size;
+} symbols[100];
+int symbol_count = 0;
 
-static int temp_var_count = 0;
-static int label_count = 0;
-static int declared_vars[100] = {0}; // Track which variables have been declared
-static FILE *output_file = NULL; // Global file pointer for code generation
+int  is_vector_var(const char *n){
+    for(int i=0;i<symbol_count;++i)
+        if(strcmp(symbols[i].name,n)==0) return symbols[i].is_vector;
+    return 0;
+}
+bool is_temp_vector_expr(const char *n){
+    return strncmp(n,"temp_vec_expr_",14)==0 ||
+           strncmp(n,"temp_index_",11)   ==0;
+}
 
-#define YYSTYPE_IS_DECLARED
-typedef union YYSTYPE
-{
-    int ival;
-    char *sval;
-    ast_node *node;
-} YYSTYPE;
+static const char *strip_parens(const char *s) {
+    size_t len = strlen(s);
+    if (len >= 2 && s[0] == '(' && s[len - 1] == ')') {
+        char *tmp = strdup(s + 1);          /* copy without first '(' */
+        tmp[len - 2] = '\0';                /* kill last ')'          */
+        return tmp;                         /* caller frees if needed */
+    }
+    return s;
+}
 
+int is_vector_expr(const char *s) {
+    const char *t = strip_parens(s);     /* NEW */
+    int res = is_vector_var(t) || is_temp_vector_expr(t);
+    if (t != s) free((char *)t);         /* only free if we duped */
+    return res;
+}
+
+void register_var(const char *n,int vec,int sz){
+    strcpy(symbols[symbol_count].name,n);
+    symbols[symbol_count].is_vector = vec;
+    symbols[symbol_count].size      = sz;
+    ++symbol_count;
+    if(vec){ strcpy(current_vec_name,n); current_vec_size=sz; }
+}
+int  get_vector_size(const char *n){
+    for(int i=0;i<symbol_count;++i)
+        if(strcmp(symbols[i].name,n)==0) return symbols[i].size;
+    return current_vec_size;
+}
+/*  concat two C snippets  */
+static char *cat2(const char *a,const char *b){
+    char *r = (char*)malloc(strlen(a)+strlen(b)+1);
+    strcpy(r,a); strcat(r,b); return r;
+}
 
 
 /* Line 189 of yacc.c  */
-#line 116 "y.tab.c"
+#line 144 "parser.tab.c"
 
 /* Enabling traces.  */
 #ifndef YYDEBUG
@@ -139,56 +167,38 @@ typedef union YYSTYPE
    /* Put the tokens into the symbol table, so that GDB and other debuggers
       know about them.  */
    enum yytokentype {
-     SCL = 258,
-     VEC = 259,
-     IF = 260,
-     LOOP = 261,
-     PRINT = 262,
-     ID = 263,
-     STRING_LITERAL = 264,
-     INT_LITERAL = 265,
-     AT = 266,
-     ADD = 267,
-     SUB = 268,
-     MUL = 269,
-     DIV = 270,
-     ASSIGN = 271,
-     LBRACE = 272,
-     RBRACE = 273,
-     LPAREN = 274,
-     RPAREN = 275,
-     LBRACK = 276,
-     RBRACK = 277,
-     COLON = 278,
-     SEMI = 279,
-     COMMA = 280
+     INT = 258,
+     ID = 259,
+     STRING = 260,
+     SCL = 261,
+     VEC = 262,
+     LOOP = 263,
+     IF = 264,
+     PRINT = 265,
+     LBRACE = 266,
+     RBRACE = 267,
+     LPAREN = 268,
+     RPAREN = 269,
+     LBRACK = 270,
+     RBRACK = 271,
+     COLON = 272,
+     SEMICOLON = 273,
+     COMMA = 274,
+     ASSIGN = 275,
+     PLUS = 276,
+     MINUS = 277,
+     TIMES = 278,
+     DIVIDE = 279,
+     DOTPROD = 280,
+     UNKNOWN = 281,
+     EQ = 282,
+     NE = 283,
+     LT = 284,
+     LE = 285,
+     GT = 286,
+     GE = 287
    };
 #endif
-/* Tokens.  */
-#define SCL 258
-#define VEC 259
-#define IF 260
-#define LOOP 261
-#define PRINT 262
-#define ID 263
-#define STRING_LITERAL 264
-#define INT_LITERAL 265
-#define AT 266
-#define ADD 267
-#define SUB 268
-#define MUL 269
-#define DIV 270
-#define ASSIGN 271
-#define LBRACE 272
-#define RBRACE 273
-#define LPAREN 274
-#define RPAREN 275
-#define LBRACK 276
-#define RBRACK 277
-#define COLON 278
-#define SEMI 279
-#define COMMA 280
-
 
 
 
@@ -197,16 +207,27 @@ typedef union YYSTYPE
 {
 
 /* Line 214 of yacc.c  */
-#line 43 "vlang.y"
+#line 74 "parser.y"
 
-    int ival;
-    char *sval;
-    ast_node *node;
+    int    ival;
+    char  *sval;
+    struct{
+        char *setup;          /* C stmts that must run first */
+        char *code;           /* the C expression itself    */
+        char *left,*right;    /* raw operands (analysis)    */
+        char  op;             /* '+','-','*','/','@',0      */
+    } expr;
+    struct{
+        char *setup;          /* setup for print list */
+        char *code;           /* comma‑separated args */
+        int   count;          /* number of args       */
+    } plist;
+    char *blockcode;          /* generated C for stmt/block */
 
 
 
 /* Line 214 of yacc.c  */
-#line 210 "y.tab.c"
+#line 231 "parser.tab.c"
 } YYSTYPE;
 # define YYSTYPE_IS_TRIVIAL 1
 # define yystype YYSTYPE /* obsolescent; will be withdrawn */
@@ -218,7 +239,7 @@ typedef union YYSTYPE
 
 
 /* Line 264 of yacc.c  */
-#line 222 "y.tab.c"
+#line 243 "parser.tab.c"
 
 #ifdef short
 # undef short
@@ -431,22 +452,22 @@ union yyalloc
 #endif
 
 /* YYFINAL -- State number of the termination state.  */
-#define YYFINAL  18
+#define YYFINAL  17
 /* YYLAST -- Last index in YYTABLE.  */
-#define YYLAST   75
+#define YYLAST   164
 
 /* YYNTOKENS -- Number of terminals.  */
-#define YYNTOKENS  26
+#define YYNTOKENS  33
 /* YYNNTS -- Number of nonterminals.  */
-#define YYNNTS  16
+#define YYNNTS  14
 /* YYNRULES -- Number of rules.  */
-#define YYNRULES  36
+#define YYNRULES  38
 /* YYNRULES -- Number of states.  */
-#define YYNSTATES  76
+#define YYNSTATES  85
 
 /* YYTRANSLATE(YYLEX) -- Bison symbol number corresponding to YYLEX.  */
 #define YYUNDEFTOK  2
-#define YYMAXUTOK   280
+#define YYMAXUTOK   287
 
 #define YYTRANSLATE(YYX)						\
   ((unsigned int) (YYX) <= YYMAXUTOK ? yytranslate[YYX] : YYUNDEFTOK)
@@ -482,7 +503,7 @@ static const yytype_uint8 yytranslate[] =
        2,     2,     2,     2,     2,     2,     1,     2,     3,     4,
        5,     6,     7,     8,     9,    10,    11,    12,    13,    14,
       15,    16,    17,    18,    19,    20,    21,    22,    23,    24,
-      25
+      25,    26,    27,    28,    29,    30,    31,    32
 };
 
 #if YYDEBUG
@@ -490,37 +511,39 @@ static const yytype_uint8 yytranslate[] =
    YYRHS.  */
 static const yytype_uint8 yyprhs[] =
 {
-       0,     0,     3,     5,     9,    12,    14,    17,    19,    21,
-      23,    25,    27,    31,    38,    43,    50,    54,    58,    64,
-      66,    70,    72,    76,    80,    82,    86,    90,    94,    96,
-      98,   100,   104,   108,   112,   118,   120
+       0,     0,     3,     5,     9,    12,    14,    16,    18,    20,
+      22,    24,    28,    35,    42,    47,    54,    61,    63,    67,
+      69,    71,    75,    79,    83,    87,    91,    93,    97,   101,
+     105,   109,   113,   117,   121,   125,   129,   131,   135
 };
 
 /* YYRHS -- A `-1'-separated list of the rules' RHS.  */
 static const yytype_int8 yyrhs[] =
 {
-      27,     0,    -1,    28,    -1,    17,    29,    18,    -1,    17,
-      18,    -1,    30,    -1,    29,    30,    -1,    31,    -1,    32,
-      -1,    33,    -1,    34,    -1,    35,    -1,     3,     8,    24,
-      -1,     4,     8,    17,    10,    18,    24,    -1,     8,    16,
-      37,    24,    -1,     8,    23,    39,    16,    37,    24,    -1,
-       5,    37,    28,    -1,     6,    37,    28,    -1,     7,     9,
-      23,    36,    24,    -1,    37,    -1,    36,    25,    37,    -1,
-      38,    -1,    37,    12,    38,    -1,    37,    13,    38,    -1,
-      39,    -1,    38,    14,    39,    -1,    38,    15,    39,    -1,
-      38,    11,    39,    -1,    10,    -1,    40,    -1,     8,    -1,
-       8,    23,    39,    -1,    19,    37,    20,    -1,    21,    10,
-      22,    -1,    21,    10,    25,    41,    22,    -1,    10,    -1,
-      41,    25,    10,    -1
+      34,     0,    -1,    35,    -1,    11,    36,    12,    -1,    36,
+      37,    -1,    37,    -1,    38,    -1,    39,    -1,    43,    -1,
+      44,    -1,    46,    -1,     6,     4,    18,    -1,     7,     4,
+      11,     3,    12,    18,    -1,     4,    20,    15,    40,    16,
+      18,    -1,     4,    20,    41,    18,    -1,     4,    17,     3,
+      20,    41,    18,    -1,     4,    17,    41,    20,    41,    18,
+      -1,     3,    -1,    40,    19,     3,    -1,     3,    -1,     4,
+      -1,    41,    21,    41,    -1,    41,    22,    41,    -1,    41,
+      23,    41,    -1,    41,    24,    41,    -1,    13,    41,    14,
+      -1,    42,    -1,    41,    17,    41,    -1,    41,    25,    41,
+      -1,    15,    40,    16,    -1,    41,    27,    41,    -1,    41,
+      28,    41,    -1,     4,    17,     3,    -1,     4,    17,    41,
+      -1,     9,    41,    35,    -1,     8,    41,    35,    -1,    41,
+      -1,    45,    19,    41,    -1,    10,     5,    17,    45,    18,
+      -1
 };
 
 /* YYRLINE[YYN] -- source line where rule number YYN was defined.  */
-static const yytype_uint8 yyrline[] =
+static const yytype_uint16 yyrline[] =
 {
-       0,    66,    66,    70,    71,    75,    76,    80,    81,    82,
-      83,    84,    88,    89,    93,    94,    98,   102,   106,   112,
-     113,   117,   118,   119,   123,   124,   125,   126,   130,   131,
-     132,   133,   134,   140,   141,   145,   146
+       0,   115,   115,   119,   123,   124,   128,   129,   130,   131,
+     132,   137,   139,   145,   157,   247,   256,   269,   270,   276,
+     282,   287,   322,   364,   398,   437,   445,   447,   478,   497,
+     506,   515,   528,   536,   559,   570,   582,   588,   604
 };
 #endif
 
@@ -529,14 +552,13 @@ static const yytype_uint8 yyrline[] =
    First, the terminals, then, starting at YYNTOKENS, nonterminals.  */
 static const char *const yytname[] =
 {
-  "$end", "error", "$undefined", "SCL", "VEC", "IF", "LOOP", "PRINT",
-  "ID", "STRING_LITERAL", "INT_LITERAL", "AT", "ADD", "SUB", "MUL", "DIV",
-  "ASSIGN", "LBRACE", "RBRACE", "LPAREN", "RPAREN", "LBRACK", "RBRACK",
-  "COLON", "SEMI", "COMMA", "$accept", "program", "block",
-  "statement_list", "statement", "declaration", "assignment",
-  "conditional_statement", "loop_statement", "print_statement",
-  "expression_list", "expression", "term", "factor", "vec_literal",
-  "int_list", 0
+  "$end", "error", "$undefined", "INT", "ID", "STRING", "SCL", "VEC",
+  "LOOP", "IF", "PRINT", "LBRACE", "RBRACE", "LPAREN", "RPAREN", "LBRACK",
+  "RBRACK", "COLON", "SEMICOLON", "COMMA", "ASSIGN", "PLUS", "MINUS",
+  "TIMES", "DIVIDE", "DOTPROD", "UNKNOWN", "EQ", "NE", "LT", "LE", "GT",
+  "GE", "$accept", "program", "block", "statement_list", "statement",
+  "declaration", "assignment", "int_list", "expression", "indexed_expr",
+  "if_statement", "loop_statement", "print_list", "print_statement", 0
 };
 #endif
 
@@ -547,26 +569,27 @@ static const yytype_uint16 yytoknum[] =
 {
        0,   256,   257,   258,   259,   260,   261,   262,   263,   264,
      265,   266,   267,   268,   269,   270,   271,   272,   273,   274,
-     275,   276,   277,   278,   279,   280
+     275,   276,   277,   278,   279,   280,   281,   282,   283,   284,
+     285,   286,   287
 };
 # endif
 
 /* YYR1[YYN] -- Symbol number of symbol that rule YYN derives.  */
 static const yytype_uint8 yyr1[] =
 {
-       0,    26,    27,    28,    28,    29,    29,    30,    30,    30,
-      30,    30,    31,    31,    32,    32,    33,    34,    35,    36,
-      36,    37,    37,    37,    38,    38,    38,    38,    39,    39,
-      39,    39,    39,    40,    40,    41,    41
+       0,    33,    34,    35,    36,    36,    37,    37,    37,    37,
+      37,    38,    38,    39,    39,    39,    39,    40,    40,    41,
+      41,    41,    41,    41,    41,    41,    41,    41,    41,    41,
+      41,    41,    42,    42,    43,    44,    45,    45,    46
 };
 
 /* YYR2[YYN] -- Number of symbols composing right hand side of rule YYN.  */
 static const yytype_uint8 yyr2[] =
 {
-       0,     2,     1,     3,     2,     1,     2,     1,     1,     1,
-       1,     1,     3,     6,     4,     6,     3,     3,     5,     1,
-       3,     1,     3,     3,     1,     3,     3,     3,     1,     1,
-       1,     3,     3,     3,     5,     1,     3
+       0,     2,     1,     3,     2,     1,     1,     1,     1,     1,
+       1,     3,     6,     6,     4,     6,     6,     1,     3,     1,
+       1,     3,     3,     3,     3,     3,     1,     3,     3,     3,
+       3,     3,     3,     3,     3,     3,     1,     3,     5
 };
 
 /* YYDEFACT[STATE-NAME] -- Default rule to reduce with in state
@@ -575,42 +598,44 @@ static const yytype_uint8 yyr2[] =
 static const yytype_uint8 yydefact[] =
 {
        0,     0,     0,     2,     0,     0,     0,     0,     0,     0,
-       4,     0,     5,     7,     8,     9,    10,    11,     1,     0,
-       0,    30,    28,     0,     0,     0,    21,    24,    29,     0,
-       0,     0,     0,     3,     6,    12,     0,     0,     0,     0,
-       0,     0,    16,     0,     0,     0,    17,     0,     0,     0,
-       0,    31,    32,    33,     0,    22,    23,    27,    25,    26,
-       0,    19,    14,     0,     0,    35,     0,    18,     0,     0,
-      13,    34,     0,    20,    15,    36
+       0,     5,     6,     7,     8,     9,    10,     1,     0,     0,
+       0,     0,    19,    20,     0,     0,     0,    26,     0,     0,
+       3,     4,    19,     0,     0,     0,    11,     0,     0,     0,
+      17,     0,     0,     0,     0,     0,     0,     0,     0,     0,
+      35,    34,     0,     0,     0,     0,    14,     0,    19,    33,
+      25,    29,     0,    27,    21,    22,    23,    24,    28,    30,
+      31,    36,     0,     0,     0,    29,     0,    18,    38,     0,
+      15,    16,    13,    12,    37
 };
 
 /* YYDEFGOTO[NTERM-NUM].  */
 static const yytype_int8 yydefgoto[] =
 {
-      -1,     2,     3,    11,    12,    13,    14,    15,    16,    17,
-      60,    25,    26,    27,    28,    66
+      -1,     2,     3,    10,    11,    12,    13,    41,    26,    27,
+      14,    15,    72,    16
 };
 
 /* YYPACT[STATE-NUM] -- Index in YYTABLE of the portion describing
    STATE-NUM.  */
-#define YYPACT_NINF -19
-static const yytype_int8 yypact[] =
+#define YYPACT_NINF -17
+static const yytype_int16 yypact[] =
 {
-     -16,    -1,    15,   -19,    20,    45,    10,    10,    21,    16,
-     -19,     5,   -19,   -19,   -19,   -19,   -19,   -19,   -19,    14,
-      42,    18,   -19,    10,    54,    30,    34,   -19,   -19,    30,
-      46,    10,    10,   -19,   -19,   -19,    55,    10,    24,    33,
-      10,    10,   -19,    10,    10,    10,   -19,    10,     9,    52,
-      53,   -19,   -19,   -19,    60,    34,    34,   -19,   -19,   -19,
-      27,    50,   -19,    10,    48,   -19,    35,   -19,    10,    22,
-     -19,   -19,    63,    50,   -19,   -19
+      11,   154,    28,   -17,   -16,    29,    38,    -1,    -1,    43,
+     147,   -17,   -17,   -17,   -17,   -17,   -17,   -17,    49,    62,
+      25,    40,   -17,    32,    -1,    56,    -4,   -17,    -4,    46,
+     -17,   -17,    47,    64,    56,    76,   -17,    67,    65,    33,
+     -17,   -11,    -1,    -1,    -1,    -1,    -1,    -1,    -1,    -1,
+     -17,   -17,    -1,    -1,    -1,   -10,   -17,    60,   -17,   109,
+     -17,   -17,    70,   109,   118,   118,   122,   122,    -2,   109,
+     109,   109,    13,    88,   100,    58,    61,   -17,   -17,    -1,
+     -17,   -17,   -17,   -17,   109
 };
 
 /* YYPGOTO[NTERM-NUM].  */
 static const yytype_int8 yypgoto[] =
 {
-     -19,   -19,    25,   -19,    64,   -19,   -19,   -19,   -19,   -19,
-     -19,    -7,    26,   -18,   -19,   -19
+     -17,   -17,     1,   -17,    72,   -17,   -17,    68,    -8,   -17,
+     -17,   -17,   -17,   -17
 };
 
 /* YYTABLE[YYPACT[STATE-NUM]].  What to do in state STATE-NUM.  If
@@ -620,40 +645,59 @@ static const yytype_int8 yypgoto[] =
 #define YYTABLE_NINF -1
 static const yytype_uint8 yytable[] =
 {
-      29,     1,     4,     5,     6,     7,     8,     9,     4,     5,
-       6,     7,     8,     9,    49,    18,    38,    10,    21,    51,
-      22,    40,    41,    33,    48,    57,    58,    59,    19,    23,
-      30,    24,    31,    62,    40,    41,    40,    41,    35,    32,
-      61,    37,    40,    41,    52,    43,    74,     1,    44,    45,
-      42,    67,    68,    20,    46,    53,    69,    71,    54,    36,
-      72,    73,    40,    41,    39,    50,    55,    56,    63,    47,
-      65,    64,    70,    75,     0,    34
+      28,    18,    22,    23,    19,    61,    75,     1,    62,    62,
+      33,    35,    24,    42,    25,    42,    39,    43,    44,    45,
+      46,    47,     1,    48,    49,    48,    49,    50,    17,    51,
+      59,    78,    79,    20,    63,    64,    65,    66,    67,    68,
+      69,    70,    21,    36,    71,    73,    74,    60,    29,    38,
+      42,    37,    32,    23,    43,    44,    45,    46,    47,    40,
+      48,    49,    24,    52,    25,    22,    23,    53,    58,    23,
+      57,    84,    76,    77,     0,    24,    82,    34,    24,    83,
+      25,    42,    31,     0,    54,    43,    44,    45,    46,    47,
+       0,    48,    49,    42,    56,     0,     0,    43,    44,    45,
+      46,    47,    55,    48,    49,    42,    80,     0,     0,    43,
+      44,    45,    46,    47,     0,    48,    49,    42,    81,     0,
+       0,    43,    44,    45,    46,    47,    42,    48,    49,     0,
+      43,    44,    45,    46,    47,    42,    48,    49,     0,    42,
+       0,    45,    46,    47,     0,    48,    49,    47,     0,    48,
+      49,     4,     0,     5,     6,     7,     8,     9,     4,    30,
+       5,     6,     7,     8,     9
 };
 
 static const yytype_int8 yycheck[] =
 {
-       7,    17,     3,     4,     5,     6,     7,     8,     3,     4,
-       5,     6,     7,     8,    32,     0,    23,    18,     8,    37,
-      10,    12,    13,    18,    31,    43,    44,    45,     8,    19,
-       9,    21,    16,    24,    12,    13,    12,    13,    24,    23,
-      47,    23,    12,    13,    20,    11,    24,    17,    14,    15,
-      25,    24,    25,     8,    29,    22,    63,    22,    25,    17,
-      25,    68,    12,    13,    10,    10,    40,    41,    16,    23,
-      10,    18,    24,    10,    -1,    11
+       8,    17,     3,     4,    20,    16,    16,    11,    19,    19,
+      18,    19,    13,    17,    15,    17,    24,    21,    22,    23,
+      24,    25,    11,    27,    28,    27,    28,    26,     0,    28,
+      38,    18,    19,     4,    42,    43,    44,    45,    46,    47,
+      48,    49,     4,    18,    52,    53,    54,    14,     5,    17,
+      17,    11,     3,     4,    21,    22,    23,    24,    25,     3,
+      27,    28,    13,    17,    15,     3,     4,    20,     3,     4,
+       3,    79,    12,     3,    -1,    13,    18,    15,    13,    18,
+      15,    17,    10,    -1,    20,    21,    22,    23,    24,    25,
+      -1,    27,    28,    17,    18,    -1,    -1,    21,    22,    23,
+      24,    25,    34,    27,    28,    17,    18,    -1,    -1,    21,
+      22,    23,    24,    25,    -1,    27,    28,    17,    18,    -1,
+      -1,    21,    22,    23,    24,    25,    17,    27,    28,    -1,
+      21,    22,    23,    24,    25,    17,    27,    28,    -1,    17,
+      -1,    23,    24,    25,    -1,    27,    28,    25,    -1,    27,
+      28,     4,    -1,     6,     7,     8,     9,    10,     4,    12,
+       6,     7,     8,     9,    10
 };
 
 /* YYSTOS[STATE-NUM] -- The (internal number of the) accessing
    symbol of state STATE-NUM.  */
 static const yytype_uint8 yystos[] =
 {
-       0,    17,    27,    28,     3,     4,     5,     6,     7,     8,
-      18,    29,    30,    31,    32,    33,    34,    35,     0,     8,
-       8,     8,    10,    19,    21,    37,    38,    39,    40,    37,
-       9,    16,    23,    18,    30,    24,    17,    23,    37,    10,
-      12,    13,    28,    11,    14,    15,    28,    23,    37,    39,
-      10,    39,    20,    22,    25,    38,    38,    39,    39,    39,
-      36,    37,    24,    16,    18,    10,    41,    24,    25,    37,
-      24,    22,    25,    37,    24,    10
+       0,    11,    34,    35,     4,     6,     7,     8,     9,    10,
+      36,    37,    38,    39,    43,    44,    46,     0,    17,    20,
+       4,     4,     3,     4,    13,    15,    41,    42,    41,     5,
+      12,    37,     3,    41,    15,    41,    18,    11,    17,    41,
+       3,    40,    17,    21,    22,    23,    24,    25,    27,    28,
+      35,    35,    17,    20,    20,    40,    18,     3,     3,    41,
+      14,    16,    19,    41,    41,    41,    41,    41,    41,    41,
+      41,    41,    45,    41,    41,    16,    12,     3,    18,    19,
+      18,    18,    18,    18,    41
 };
 
 #define yyerrok		(yyerrstatus = 0)
@@ -1467,254 +1511,670 @@ yyreduce:
         case 2:
 
 /* Line 1455 of yacc.c  */
-#line 66 "vlang.y"
-    { (yyval.node) = (yyvsp[(1) - (1)].node); root_node = (yyvsp[(1) - (1)].node); }
+#line 115 "parser.y"
+    { fprintf(out,"%s",(yyvsp[(1) - (1)].blockcode)); free((yyvsp[(1) - (1)].blockcode)); ;}
     break;
 
   case 3:
 
 /* Line 1455 of yacc.c  */
-#line 70 "vlang.y"
-    { (yyval.node) = (yyvsp[(2) - (3)].node); }
+#line 119 "parser.y"
+    { (yyval.blockcode) = (yyvsp[(2) - (3)].blockcode); ;}
     break;
 
   case 4:
 
 /* Line 1455 of yacc.c  */
-#line 71 "vlang.y"
-    { (yyval.node) = NULL; }
+#line 123 "parser.y"
+    { (yyval.blockcode) = cat2((yyvsp[(1) - (2)].blockcode),(yyvsp[(2) - (2)].blockcode)); free((yyvsp[(1) - (2)].blockcode)); free((yyvsp[(2) - (2)].blockcode)); ;}
     break;
 
   case 5:
 
 /* Line 1455 of yacc.c  */
-#line 75 "vlang.y"
-    { (yyval.node) = (yyvsp[(1) - (1)].node); }
+#line 124 "parser.y"
+    { (yyval.blockcode) = (yyvsp[(1) - (1)].blockcode); ;}
     break;
 
   case 6:
 
 /* Line 1455 of yacc.c  */
-#line 76 "vlang.y"
-    { (yyval.node) = new_node(SEMI_NODE, (yyvsp[(1) - (2)].node), (yyvsp[(2) - (2)].node)); }
+#line 128 "parser.y"
+    { (yyval.blockcode) = strdup(""); ;}
     break;
 
   case 7:
 
 /* Line 1455 of yacc.c  */
-#line 80 "vlang.y"
-    { (yyval.node) = (yyvsp[(1) - (1)].node); }
+#line 129 "parser.y"
+    { (yyval.blockcode) = (yyvsp[(1) - (1)].blockcode); ;}
     break;
 
   case 8:
 
 /* Line 1455 of yacc.c  */
-#line 81 "vlang.y"
-    { (yyval.node) = (yyvsp[(1) - (1)].node); }
+#line 130 "parser.y"
+    { (yyval.blockcode) = (yyvsp[(1) - (1)].blockcode); ;}
     break;
 
   case 9:
 
 /* Line 1455 of yacc.c  */
-#line 82 "vlang.y"
-    { (yyval.node) = (yyvsp[(1) - (1)].node); }
+#line 131 "parser.y"
+    { (yyval.blockcode) = (yyvsp[(1) - (1)].blockcode); ;}
     break;
 
   case 10:
 
 /* Line 1455 of yacc.c  */
-#line 83 "vlang.y"
-    { (yyval.node) = (yyvsp[(1) - (1)].node); }
+#line 132 "parser.y"
+    { (yyval.blockcode) = (yyvsp[(1) - (1)].blockcode); ;}
     break;
 
   case 11:
 
 /* Line 1455 of yacc.c  */
-#line 84 "vlang.y"
-    { (yyval.node) = (yyvsp[(1) - (1)].node); }
+#line 138 "parser.y"
+    { fprintf(out,"int %s = 0;\n",(yyvsp[(2) - (3)].sval)); register_var((yyvsp[(2) - (3)].sval),0,1); ;}
     break;
 
   case 12:
 
 /* Line 1455 of yacc.c  */
-#line 88 "vlang.y"
-    { add_symbol((yyvsp[(2) - (3)].sval), SCL_TYPE, 0); (yyval.node) = NULL; }
+#line 140 "parser.y"
+    { fprintf(out,"int %s[%d] = {0};\n",(yyvsp[(2) - (6)].sval),(yyvsp[(4) - (6)].ival)); register_var((yyvsp[(2) - (6)].sval),1,(yyvsp[(4) - (6)].ival)); ;}
     break;
 
   case 13:
 
 /* Line 1455 of yacc.c  */
-#line 89 "vlang.y"
-    { add_symbol((yyvsp[(2) - (6)].sval), VEC_TYPE, (yyvsp[(4) - (6)].ival)); (yyval.node) = NULL; }
+#line 146 "parser.y"
+    {
+            static int t=0; char tmp[64]; sprintf(tmp,"temp_vec_%d",t++);
+            char buf[256+strlen((yyvsp[(4) - (6)].sval))];
+            sprintf(buf,
+                "int %s[] = {%s};\n"
+                "memcpy(%s,%s,sizeof(int)*%d);\n",
+                tmp,(yyvsp[(4) - (6)].sval),(yyvsp[(1) - (6)].sval),tmp,current_vec_size);
+            (yyval.blockcode) = strdup(buf); free((yyvsp[(4) - (6)].sval));
+        ;}
     break;
 
   case 14:
 
 /* Line 1455 of yacc.c  */
-#line 93 "vlang.y"
-    { (yyval.node) = new_node(ASSIGN_NODE, new_leaf(ID_NODE, (yyvsp[(1) - (4)].sval)), (yyvsp[(3) - (4)].node)); }
+#line 158 "parser.y"
+    {
+            /*  run any setup statements produced while parsing the RHS  */
+            char *buf = cat2((yyvsp[(3) - (4)].expr).setup, "");
+
+            /* 1. RHS is a **temporary** vector we built earlier */
+            if (is_temp_vector_expr((yyvsp[(3) - (4)].expr).code)) {
+                char rhs[128];
+                sprintf(rhs,
+                        "memcpy(%s, %s, sizeof(int)*%d);\n",
+                        (yyvsp[(1) - (4)].sval), (yyvsp[(3) - (4)].expr).code, current_vec_size);
+                buf = cat2(buf, rhs);
+            }
+
+            /* 2. destination is **scalar** → simple scalar assignment   */
+            else if (!is_vector_var((yyvsp[(1) - (4)].sval))) {
+                char rhs[128];
+                sprintf(rhs, "%s = %s;\n", (yyvsp[(1) - (4)].sval), (yyvsp[(3) - (4)].expr).code);
+                buf = cat2(buf, rhs);
+            }
+
+            /* 3. pattern  v = v2 : v1   (vector‑by‑vector indexing)     */
+            else if ((yyvsp[(3) - (4)].expr).left && (yyvsp[(3) - (4)].expr).right &&
+                     is_vector_expr((yyvsp[(3) - (4)].expr).left) &&
+                     is_vector_expr((yyvsp[(3) - (4)].expr).right) &&
+                     (yyvsp[(3) - (4)].expr).op == 0)
+            {
+                char rhs[160];
+                sprintf(rhs,
+                        "vector_index_by_vector(%s, %s, %s, %d);\n",
+                        (yyvsp[(1) - (4)].sval), (yyvsp[(3) - (4)].expr).left, (yyvsp[(3) - (4)].expr).right, current_vec_size);
+                buf = cat2(buf, rhs);
+            }
+
+            /* 4. **new branch**  simple vector‑to‑vector copy: y = x;   */
+            else if (is_vector_expr((yyvsp[(3) - (4)].expr).code) &&     /* RHS is a vector  */
+                     (yyvsp[(3) - (4)].expr).right == NULL &&            /* not an op result */
+                     (yyvsp[(3) - (4)].expr).op == 0)
+            {
+                char rhs[128];
+                sprintf(rhs,
+                        "memcpy(%s, %s, sizeof(int)*%d);\n",
+                        (yyvsp[(1) - (4)].sval), (yyvsp[(3) - (4)].expr).code, current_vec_size);
+                buf = cat2(buf, rhs);
+            }
+
+            /* 5. broadcast of scalar / literal into vector             */
+            else if ((yyvsp[(3) - (4)].expr).op == 0) {
+                char rhs[160];
+                sprintf(rhs,
+                        "for(int i=0; i<%d; ++i) %s[i] = %s;\n",
+                        current_vec_size, (yyvsp[(1) - (4)].sval), (yyvsp[(3) - (4)].expr).code);
+                buf = cat2(buf, rhs);
+            }
+
+            /* 6. vector‑scalar & vector‑vector arithmetic               */
+            else {
+                int l = is_vector_expr((yyvsp[(3) - (4)].expr).left);
+                int r = is_vector_expr((yyvsp[(3) - (4)].expr).right);
+                char rhs[192];
+
+                if (!l && !r)                                   /* s op s */
+                    sprintf(rhs,
+                        "for(int i=0; i<%d; ++i) %s[i] = %s;\n",
+                        current_vec_size, (yyvsp[(1) - (4)].sval), (yyvsp[(3) - (4)].expr).code);
+                else if (l && !r)                               /* v op s */
+                    sprintf(rhs,
+                        "vector_scalar_op(%s, %s, %s, %d, '%c');\n",
+                        (yyvsp[(1) - (4)].sval), (yyvsp[(3) - (4)].expr).left,  (yyvsp[(3) - (4)].expr).right,
+                        current_vec_size, (yyvsp[(3) - (4)].expr).op);
+                else if (!l && r)                               /* s op v */
+                    sprintf(rhs,
+                        "vector_scalar_op(%s, %s, %s, %d, '%c');\n",
+                        (yyvsp[(1) - (4)].sval), (yyvsp[(3) - (4)].expr).right, (yyvsp[(3) - (4)].expr).left,
+                        current_vec_size, (yyvsp[(3) - (4)].expr).op);
+                else                                            /* v op v */
+                    sprintf(rhs,
+                        "vector_vector_op(%s, %s, %s, %d, '%c');\n",
+                        (yyvsp[(1) - (4)].sval), (yyvsp[(3) - (4)].expr).left, (yyvsp[(3) - (4)].expr).right,
+                        current_vec_size, (yyvsp[(3) - (4)].expr).op);
+
+                buf = cat2(buf, rhs);
+            }
+
+            (yyval.blockcode) = buf;
+            free((yyvsp[(3) - (4)].expr).code);
+            free((yyvsp[(3) - (4)].expr).setup);
+        ;}
     break;
 
   case 15:
 
 /* Line 1455 of yacc.c  */
-#line 94 "vlang.y"
-    { (yyval.node) = new_node(ASSIGN_NODE, new_node(COLON_NODE, new_leaf(ID_NODE, (yyvsp[(1) - (6)].sval)), (yyvsp[(3) - (6)].node)), (yyvsp[(5) - (6)].node)); }
+#line 248 "parser.y"
+    {
+            char *buf = cat2((yyvsp[(5) - (6)].expr).setup,"");
+            char rhs[160];
+            sprintf(rhs,"%s[%d] = %s;\n",(yyvsp[(1) - (6)].sval),(yyvsp[(3) - (6)].ival),(yyvsp[(5) - (6)].expr).code);
+            buf = cat2(buf,rhs); (yyval.blockcode) = buf;
+            free((yyvsp[(5) - (6)].expr).code); free((yyvsp[(5) - (6)].expr).setup);
+        ;}
     break;
 
   case 16:
 
 /* Line 1455 of yacc.c  */
-#line 98 "vlang.y"
-    { (yyval.node) = new_node(IF_NODE, (yyvsp[(2) - (3)].node), (yyvsp[(3) - (3)].node)); }
+#line 257 "parser.y"
+    {
+            char *buf = cat2((yyvsp[(3) - (6)].expr).setup,(yyvsp[(5) - (6)].expr).setup);
+            char rhs[192];
+            sprintf(rhs,"%s[(int)(%s)] = %s;\n",(yyvsp[(1) - (6)].sval),(yyvsp[(3) - (6)].expr).code,(yyvsp[(5) - (6)].expr).code);
+            buf = cat2(buf,rhs); (yyval.blockcode) = buf;
+            free((yyvsp[(3) - (6)].expr).code); free((yyvsp[(3) - (6)].expr).setup);
+            free((yyvsp[(5) - (6)].expr).code); free((yyvsp[(5) - (6)].expr).setup);
+        ;}
     break;
 
   case 17:
 
 /* Line 1455 of yacc.c  */
-#line 102 "vlang.y"
-    { (yyval.node) = new_node(LOOP_NODE, (yyvsp[(2) - (3)].node), (yyvsp[(3) - (3)].node)); }
+#line 269 "parser.y"
+    { char tmp[32]; sprintf(tmp,"%d",(yyvsp[(1) - (1)].ival)); (yyval.sval)=strdup(tmp); ;}
     break;
 
   case 18:
 
 /* Line 1455 of yacc.c  */
-#line 106 "vlang.y"
-    { 
-        (yyval.node) = new_node(PRINT_NODE, new_leaf(STRING_LITERAL_NODE, (yyvsp[(2) - (5)].sval)), (yyvsp[(4) - (5)].node)); 
-    }
+#line 271 "parser.y"
+    { char *b=(char*)malloc(strlen((yyvsp[(1) - (3)].sval))+32); sprintf(b,"%s,%d",(yyvsp[(1) - (3)].sval),(yyvsp[(3) - (3)].ival)); free((yyvsp[(1) - (3)].sval)); (yyval.sval)=b; ;}
     break;
 
   case 19:
 
 /* Line 1455 of yacc.c  */
-#line 112 "vlang.y"
-    { (yyval.node) = (yyvsp[(1) - (1)].node); }
+#line 277 "parser.y"
+    {
+            char tmp[32]; sprintf(tmp,"%d",(yyvsp[(1) - (1)].ival));
+            (yyval.expr).setup=strdup(""); (yyval.expr).code=strdup(tmp);
+            (yyval.expr).left=(yyval.expr).code; (yyval.expr).right=NULL; (yyval.expr).op=0;
+        ;}
     break;
 
   case 20:
 
 /* Line 1455 of yacc.c  */
-#line 113 "vlang.y"
-    { (yyval.node) = new_node(COMMA_NODE, (yyvsp[(1) - (3)].node), (yyvsp[(3) - (3)].node)); }
+#line 283 "parser.y"
+    { (yyval.expr).setup=strdup(""); (yyval.expr).code=strdup((yyvsp[(1) - (1)].sval));
+          (yyval.expr).left=(yyval.expr).code; (yyval.expr).right=NULL; (yyval.expr).op=0; ;}
     break;
 
   case 21:
 
 /* Line 1455 of yacc.c  */
-#line 117 "vlang.y"
-    { (yyval.node) = (yyvsp[(1) - (1)].node); }
+#line 288 "parser.y"
+    {
+            (yyval.expr).setup = cat2((yyvsp[(1) - (3)].expr).setup, (yyvsp[(3) - (3)].expr).setup);
+            int l = is_vector_expr((yyvsp[(1) - (3)].expr).code);
+            int r = is_vector_expr((yyvsp[(3) - (3)].expr).code);
+
+            if (l && r) {                                   /* v + v */
+                char tmp[64]; sprintf(tmp,"temp_vec_expr_%d", temp_id_counter++);
+                char buf[256];
+                sprintf(buf,
+                    "int %s[%d];\n"
+                    "vector_vector_op(%s, %s, %s, %d, '+');\n",
+                    tmp, current_vec_size, tmp, (yyvsp[(1) - (3)].expr).code, (yyvsp[(3) - (3)].expr).code, current_vec_size);
+                (yyval.expr).setup = cat2((yyval.expr).setup, buf);
+                (yyval.expr).code  = strdup(tmp);
+            } else if (l || r) {                            /* v + s | s + v */
+                char tmp[64]; sprintf(tmp,"temp_vec_expr_%d", temp_id_counter++);
+                char buf[256];
+                const char *vec = l ? (yyvsp[(1) - (3)].expr).code : (yyvsp[(3) - (3)].expr).code;
+                const char *scl = l ? (yyvsp[(3) - (3)].expr).code : (yyvsp[(1) - (3)].expr).code;
+                sprintf(buf,
+                    "int %s[%d];\n"
+                    "vector_scalar_op(%s, %s, %s, %d, '+');\n",
+                    tmp, current_vec_size, tmp, vec, scl, current_vec_size);
+                (yyval.expr).setup = cat2((yyval.expr).setup, buf);
+                (yyval.expr).code  = strdup(tmp);
+            } else {                                        /* s + s */
+                char *code = (char*)malloc(strlen((yyvsp[(1) - (3)].expr).code)+strlen((yyvsp[(3) - (3)].expr).code)+4);
+                sprintf(code,"%s + %s",(yyvsp[(1) - (3)].expr).code,(yyvsp[(3) - (3)].expr).code);
+                (yyval.expr).code = code;
+            }
+            (yyval.expr).left = (yyvsp[(1) - (3)].expr).code; (yyval.expr).right = (yyvsp[(3) - (3)].expr).code; (yyval.expr).op = '+';
+        ;}
     break;
 
   case 22:
 
 /* Line 1455 of yacc.c  */
-#line 118 "vlang.y"
-    { (yyval.node) = new_node(ADD_NODE, (yyvsp[(1) - (3)].node), (yyvsp[(3) - (3)].node)); }
+#line 323 "parser.y"
+    {
+            (yyval.expr).setup = cat2((yyvsp[(1) - (3)].expr).setup, (yyvsp[(3) - (3)].expr).setup);
+            int l = is_vector_expr((yyvsp[(1) - (3)].expr).code);
+            int r = is_vector_expr((yyvsp[(3) - (3)].expr).code);
+
+            if (l && r) {                                   /* v - v */
+                char tmp[64]; sprintf(tmp,"temp_vec_expr_%d", temp_id_counter++);
+                char buf[256];
+                sprintf(buf,
+                    "int %s[%d];\n"
+                    "vector_vector_op(%s, %s, %s, %d, '-');\n",
+                    tmp, current_vec_size, tmp, (yyvsp[(1) - (3)].expr).code, (yyvsp[(3) - (3)].expr).code, current_vec_size);
+                (yyval.expr).setup = cat2((yyval.expr).setup, buf);
+                (yyval.expr).code  = strdup(tmp);
+            } else if (l || r) {                            /* v - s | s - v */
+                char tmp[64]; sprintf(tmp,"temp_vec_expr_%d", temp_id_counter++);
+                char buf[256];
+                const char *vec = l ? (yyvsp[(1) - (3)].expr).code : (yyvsp[(3) - (3)].expr).code;
+                const char *scl = l ? (yyvsp[(3) - (3)].expr).code : (yyvsp[(1) - (3)].expr).code;
+                /* order matters for scalar‑vector vs vector‑scalar */
+                if (l) /* v - s */
+                    sprintf(buf,
+                        "int %s[%d];\n"
+                        "vector_scalar_op(%s, %s, %s, %d, '-');\n",
+                        tmp, current_vec_size, tmp, vec, scl, current_vec_size);
+                else   /* s - v */
+                    sprintf(buf,
+                        "int %s[%d];\n"
+                        "vector_scalar_op(%s, %s, %s, %d, '-');\n",
+                        tmp, current_vec_size, tmp, scl, vec, current_vec_size);
+                (yyval.expr).setup = cat2((yyval.expr).setup, buf);
+                (yyval.expr).code  = strdup(tmp);
+            } else {                                        /* s - s */
+                char *code = (char*)malloc(strlen((yyvsp[(1) - (3)].expr).code)+strlen((yyvsp[(3) - (3)].expr).code)+4);
+                sprintf(code,"%s - %s",(yyvsp[(1) - (3)].expr).code,(yyvsp[(3) - (3)].expr).code);
+                (yyval.expr).code = code;
+            }
+            (yyval.expr).left = (yyvsp[(1) - (3)].expr).code; (yyval.expr).right = (yyvsp[(3) - (3)].expr).code; (yyval.expr).op = '-';
+        ;}
     break;
 
   case 23:
 
 /* Line 1455 of yacc.c  */
-#line 119 "vlang.y"
-    { (yyval.node) = new_node(SUB_NODE, (yyvsp[(1) - (3)].node), (yyvsp[(3) - (3)].node)); }
+#line 365 "parser.y"
+    {
+            (yyval.expr).setup = cat2((yyvsp[(1) - (3)].expr).setup, (yyvsp[(3) - (3)].expr).setup);
+            int l = is_vector_expr((yyvsp[(1) - (3)].expr).code);
+            int r = is_vector_expr((yyvsp[(3) - (3)].expr).code);
+
+            if (l && r) {                                   /* v * v */
+                char tmp[64]; sprintf(tmp,"temp_vec_expr_%d", temp_id_counter++);
+                char buf[256];
+                sprintf(buf,
+                    "int %s[%d];\n"
+                    "vector_vector_op(%s, %s, %s, %d, '*');\n",
+                    tmp, current_vec_size, tmp, (yyvsp[(1) - (3)].expr).code, (yyvsp[(3) - (3)].expr).code, current_vec_size);
+                (yyval.expr).setup = cat2((yyval.expr).setup, buf);
+                (yyval.expr).code  = strdup(tmp);
+            } else if (l || r) {                            /* v * s | s * v */
+                char tmp[64]; sprintf(tmp,"temp_vec_expr_%d", temp_id_counter++);
+                char buf[256];
+                const char *vec = l ? (yyvsp[(1) - (3)].expr).code : (yyvsp[(3) - (3)].expr).code;
+                const char *scl = l ? (yyvsp[(3) - (3)].expr).code : (yyvsp[(1) - (3)].expr).code;
+                sprintf(buf,
+                    "int %s[%d];\n"
+                    "vector_scalar_op(%s, %s, %s, %d, '*');\n",
+                    tmp, current_vec_size, tmp, vec, scl, current_vec_size);
+                (yyval.expr).setup = cat2((yyval.expr).setup, buf);
+                (yyval.expr).code  = strdup(tmp);
+            } else {                                        /* s * s */
+                char *code = (char*)malloc(strlen((yyvsp[(1) - (3)].expr).code)+strlen((yyvsp[(3) - (3)].expr).code)+4);
+                sprintf(code,"%s * %s",(yyvsp[(1) - (3)].expr).code,(yyvsp[(3) - (3)].expr).code);
+                (yyval.expr).code = code;
+            }
+            (yyval.expr).left = (yyvsp[(1) - (3)].expr).code; (yyval.expr).right = (yyvsp[(3) - (3)].expr).code; (yyval.expr).op = '*';
+        ;}
     break;
 
   case 24:
 
 /* Line 1455 of yacc.c  */
-#line 123 "vlang.y"
-    { (yyval.node) = (yyvsp[(1) - (1)].node); }
+#line 399 "parser.y"
+    {
+    (yyval.expr).setup = cat2((yyvsp[(1) - (3)].expr).setup, (yyvsp[(3) - (3)].expr).setup);
+    int l = is_vector_expr((yyvsp[(1) - (3)].expr).code);
+    int r = is_vector_expr((yyvsp[(3) - (3)].expr).code);
+
+    if (l && r) {
+        char tmp[64]; sprintf(tmp,"temp_vec_expr_%d", temp_id_counter++);
+        char buf[256];
+        sprintf(buf,
+            "int %s[%d];\n"
+            "vector_vector_op(%s, %s, %s, %d, '/');\n",
+            tmp, current_vec_size, tmp, (yyvsp[(1) - (3)].expr).code, (yyvsp[(3) - (3)].expr).code, current_vec_size);
+        (yyval.expr).setup = cat2((yyval.expr).setup, buf);
+        (yyval.expr).code = strdup(tmp);
+    } else if (l || r) {
+        char tmp[64]; sprintf(tmp,"temp_vec_expr_%d", temp_id_counter++);
+        char buf[256];
+        const char *vec = l ? (yyvsp[(1) - (3)].expr).code : (yyvsp[(3) - (3)].expr).code;
+        const char *scl = l ? (yyvsp[(3) - (3)].expr).code : (yyvsp[(1) - (3)].expr).code;
+        sprintf(buf,
+            "int %s[%d];\n"
+            "vector_scalar_op(%s, %s, %s, %d, '/');\n",
+            tmp, current_vec_size, tmp, vec, scl, current_vec_size);
+        (yyval.expr).setup = cat2((yyval.expr).setup, buf);
+        (yyval.expr).code = strdup(tmp);
+    } else {
+        char *code = (char*)malloc(strlen((yyvsp[(1) - (3)].expr).code)+strlen((yyvsp[(3) - (3)].expr).code)+4);
+        sprintf(code,"%s / %s",(yyvsp[(1) - (3)].expr).code,(yyvsp[(3) - (3)].expr).code);
+        (yyval.expr).code = code;
+    }
+
+    (yyval.expr).left = (yyvsp[(1) - (3)].expr).code;
+    (yyval.expr).right = (yyvsp[(3) - (3)].expr).code;
+    (yyval.expr).op = '/';
+;}
     break;
 
   case 25:
 
 /* Line 1455 of yacc.c  */
-#line 124 "vlang.y"
-    { (yyval.node) = new_node(MUL_NODE, (yyvsp[(1) - (3)].node), (yyvsp[(3) - (3)].node)); }
+#line 438 "parser.y"
+    {
+            char *code = (char*)malloc(strlen((yyvsp[(2) - (3)].expr).code)+3);
+            sprintf(code,"(%s)",(yyvsp[(2) - (3)].expr).code);
+            (yyval.expr).setup=(yyvsp[(2) - (3)].expr).setup; (yyval.expr).code=code;
+            (yyval.expr).left=(yyvsp[(2) - (3)].expr).left; (yyval.expr).right=(yyvsp[(2) - (3)].expr).right; (yyval.expr).op=(yyvsp[(2) - (3)].expr).op;
+        ;}
     break;
 
   case 26:
 
 /* Line 1455 of yacc.c  */
-#line 125 "vlang.y"
-    { (yyval.node) = new_node(DIV_NODE, (yyvsp[(1) - (3)].node), (yyvsp[(3) - (3)].node)); }
+#line 445 "parser.y"
+    { (yyval.expr)=(yyvsp[(1) - (1)].expr); ;}
     break;
 
   case 27:
 
 /* Line 1455 of yacc.c  */
-#line 126 "vlang.y"
-    { (yyval.node) = new_node(AT_NODE, (yyvsp[(1) - (3)].node), (yyvsp[(3) - (3)].node)); }
+#line 448 "parser.y"
+    {
+    char *setup = cat2((yyvsp[(1) - (3)].expr).setup, (yyvsp[(3) - (3)].expr).setup);
+
+    if (!is_vector_expr((yyvsp[(3) - (3)].expr).code)) {
+        // scalar index
+        char buf[512];
+        sprintf(buf, "%s[(int)(%s)]", (yyvsp[(1) - (3)].expr).code, (yyvsp[(3) - (3)].expr).code);
+        (yyval.expr).setup = setup;
+        (yyval.expr).code = strdup(buf);
+        (yyval.expr).left = strdup((yyvsp[(1) - (3)].expr).code);
+        (yyval.expr).right = strdup((yyvsp[(3) - (3)].expr).code);
+        (yyval.expr).op = 0;
+    } else {
+        // vector index
+       char tmp[64]; sprintf(tmp,"temp_index_%d",temp_id_counter++);
+        char prep[256];
+        sprintf(prep,
+            "int %s[%d];\n"
+            "vector_index_by_vector(%s,%s,%s,%d);\n",
+            tmp, current_vec_size, tmp, (yyvsp[(1) - (3)].expr).code, (yyvsp[(3) - (3)].expr).code, current_vec_size);
+        setup = cat2(setup, prep);
+        (yyval.expr).setup = setup;
+        (yyval.expr).code = strdup(tmp);
+        (yyval.expr).left = strdup((yyvsp[(1) - (3)].expr).code);
+        (yyval.expr).right = strdup((yyvsp[(3) - (3)].expr).code);
+        (yyval.expr).op = 0;
+    }
+;}
     break;
 
   case 28:
 
 /* Line 1455 of yacc.c  */
-#line 130 "vlang.y"
-    { (yyval.node) = new_leaf(INT_LITERAL_NODE, (char *)malloc(sizeof(char)*10)); sprintf((yyval.node)->name, "%d", (yyvsp[(1) - (1)].ival)); }
+#line 479 "parser.y"
+    {
+    if (!is_vector_expr((yyvsp[(1) - (3)].expr).code) || !is_vector_expr((yyvsp[(3) - (3)].expr).code)) {
+        yyerror("dot product '@' requires both operands to be vectors");
+        YYABORT;
+    }
+
+    char *setup = cat2((yyvsp[(1) - (3)].expr).setup,(yyvsp[(3) - (3)].expr).setup);
+    int sz = current_vec_size;
+    if ((yyvsp[(1) - (3)].expr).left) sz = get_vector_size((yyvsp[(1) - (3)].expr).left);
+
+    char *code = (char*)malloc(strlen((yyvsp[(1) - (3)].expr).code)+strlen((yyvsp[(3) - (3)].expr).code)+32);
+    sprintf(code,"dot_product(%s,%s,%d)",(yyvsp[(1) - (3)].expr).code,(yyvsp[(3) - (3)].expr).code,sz);
+
+    (yyval.expr).setup = setup; (yyval.expr).code = code;
+    (yyval.expr).left = (yyvsp[(1) - (3)].expr).code; (yyval.expr).right = (yyvsp[(3) - (3)].expr).code; (yyval.expr).op = '@';
+;}
     break;
 
   case 29:
 
 /* Line 1455 of yacc.c  */
-#line 131 "vlang.y"
-    { (yyval.node) = (yyvsp[(1) - (1)].node); }
+#line 498 "parser.y"
+    {
+        char tmp[64]; sprintf(tmp,"temp_vec_expr_%d",temp_id_counter++);
+
+            char prep[256+strlen((yyvsp[(2) - (3)].sval))];
+            sprintf(prep,"int %s[] = {%s};\n",tmp,(yyvsp[(2) - (3)].sval));
+            (yyval.expr).setup=strdup(prep); (yyval.expr).code=strdup(tmp);
+            (yyval.expr).left=(yyval.expr).code; (yyval.expr).right=NULL; (yyval.expr).op=0; free((yyvsp[(2) - (3)].sval));
+        ;}
     break;
 
   case 30:
 
 /* Line 1455 of yacc.c  */
-#line 132 "vlang.y"
-    { (yyval.node) = new_leaf(ID_NODE, (yyvsp[(1) - (1)].sval)); }
+#line 507 "parser.y"
+    {
+        (yyval.expr).setup = cat2((yyvsp[(1) - (3)].expr).setup, (yyvsp[(3) - (3)].expr).setup);
+        char *code = (char*)malloc(strlen((yyvsp[(1) - (3)].expr).code)+strlen((yyvsp[(3) - (3)].expr).code)+6);
+        sprintf(code, "%s == %s", (yyvsp[(1) - (3)].expr).code, (yyvsp[(3) - (3)].expr).code);
+        (yyval.expr).code = code;
+        (yyval.expr).left = (yyvsp[(1) - (3)].expr).code; (yyval.expr).right = (yyvsp[(3) - (3)].expr).code; (yyval.expr).op = 0;
+    ;}
     break;
 
   case 31:
 
 /* Line 1455 of yacc.c  */
-#line 133 "vlang.y"
-    { (yyval.node) = new_node(COLON_NODE, new_leaf(ID_NODE, (yyvsp[(1) - (3)].sval)), (yyvsp[(3) - (3)].node)); }
+#line 516 "parser.y"
+    {
+        (yyval.expr).setup = cat2((yyvsp[(1) - (3)].expr).setup, (yyvsp[(3) - (3)].expr).setup);
+        char *code = (char*)malloc(strlen((yyvsp[(1) - (3)].expr).code)+strlen((yyvsp[(3) - (3)].expr).code)+6);
+        sprintf(code, "%s != %s", (yyvsp[(1) - (3)].expr).code, (yyvsp[(3) - (3)].expr).code);
+        (yyval.expr).code = code;
+        (yyval.expr).left = (yyvsp[(1) - (3)].expr).code; (yyval.expr).right = (yyvsp[(3) - (3)].expr).code; (yyval.expr).op = 0;
+    ;}
     break;
 
   case 32:
 
 /* Line 1455 of yacc.c  */
-#line 134 "vlang.y"
-    { (yyval.node) = (yyvsp[(2) - (3)].node); }
+#line 529 "parser.y"
+    {
+            char buf[256]; sprintf(buf,"%s[%d]",(yyvsp[(1) - (3)].sval),(yyvsp[(3) - (3)].ival));
+            (yyval.expr).setup=strdup(""); (yyval.expr).code=strdup(buf);
+            (yyval.expr).left=strdup((yyvsp[(1) - (3)].sval));
+            char idx[32]; sprintf(idx,"%d",(yyvsp[(3) - (3)].ival));
+            (yyval.expr).right=strdup(idx); (yyval.expr).op=0;
+        ;}
     break;
 
   case 33:
 
 /* Line 1455 of yacc.c  */
-#line 140 "vlang.y"
-    { char *s = (char *)malloc(sizeof(char)*10); sprintf(s, "%d", (yyvsp[(2) - (3)].ival)); (yyval.node) = new_node(VEC_LITERAL_NODE, new_leaf(INT_LITERAL_NODE, s), NULL); }
+#line 537 "parser.y"
+    {
+            char *setup = (yyvsp[(3) - (3)].expr).setup;
+            if(is_vector_expr((yyvsp[(3) - (3)].expr).code)){
+                static int t=0; char tmp[64]; sprintf(tmp,"temp_index_%d",t++);
+                char prep[256];
+                sprintf(prep,
+                    "int %s[%d];\n"
+                    "vector_index_by_vector(%s,%s,%s,%d);\n",
+                    tmp,current_vec_size,tmp,(yyvsp[(1) - (3)].sval),(yyvsp[(3) - (3)].expr).code,current_vec_size);
+                setup = cat2(setup,prep);
+                (yyval.expr).code=strdup(tmp);
+            }else{
+                char buf[512]; sprintf(buf,"%s[(int)(%s)]",(yyvsp[(1) - (3)].sval),(yyvsp[(3) - (3)].expr).code);
+                (yyval.expr).code=strdup(buf);
+            }
+            (yyval.expr).setup=setup; (yyval.expr).left=strdup((yyvsp[(1) - (3)].sval)); (yyval.expr).right=strdup((yyvsp[(3) - (3)].expr).code); (yyval.expr).op=0;
+            free((yyvsp[(3) - (3)].expr).code);
+        ;}
     break;
 
   case 34:
 
 /* Line 1455 of yacc.c  */
-#line 141 "vlang.y"
-    { char *s = (char *)malloc(sizeof(char)*10); sprintf(s, "%d", (yyvsp[(2) - (5)].ival)); (yyval.node) = new_node(VEC_LITERAL_NODE, new_leaf(INT_LITERAL_NODE, s), (yyvsp[(4) - (5)].node)); }
+#line 560 "parser.y"
+    {
+            char *buf = cat2((yyvsp[(2) - (3)].expr).setup,"");
+            char head[64+strlen((yyvsp[(2) - (3)].expr).code)];
+            sprintf(head,"if(%s){\n",(yyvsp[(2) - (3)].expr).code);
+            buf = cat2(buf,head); buf = cat2(buf,(yyvsp[(3) - (3)].blockcode)); buf = cat2(buf,"}\n");
+            (yyval.blockcode) = buf; free((yyvsp[(2) - (3)].expr).code); free((yyvsp[(2) - (3)].expr).setup); free((yyvsp[(3) - (3)].blockcode));
+        ;}
     break;
 
   case 35:
 
 /* Line 1455 of yacc.c  */
-#line 145 "vlang.y"
-    { char *s = (char *)malloc(sizeof(char)*10); sprintf(s, "%d", (yyvsp[(1) - (1)].ival)); (yyval.node) = new_leaf(INT_LITERAL_NODE, s); }
+#line 571 "parser.y"
+    {
+            char *buf = cat2((yyvsp[(2) - (3)].expr).setup,"");
+            char head[80+strlen((yyvsp[(2) - (3)].expr).code)];
+            sprintf(head,"for(int __i=0;__i<%s;++__i){\n",(yyvsp[(2) - (3)].expr).code);
+            buf = cat2(buf,head); buf = cat2(buf,(yyvsp[(3) - (3)].blockcode)); buf = cat2(buf,"}\n");
+            (yyval.blockcode) = buf; free((yyvsp[(2) - (3)].expr).code); free((yyvsp[(2) - (3)].expr).setup); free((yyvsp[(3) - (3)].blockcode));
+        ;}
     break;
 
   case 36:
 
 /* Line 1455 of yacc.c  */
-#line 146 "vlang.y"
-    { char *s = (char *)malloc(sizeof(char)*10); sprintf(s, "%d", (yyvsp[(3) - (3)].ival)); (yyval.node) = new_node(COMMA_NODE, (yyvsp[(1) - (3)].node), new_leaf(INT_LITERAL_NODE, s)); }
+#line 583 "parser.y"
+    {                       /* first item                          */
+            (yyval.plist).setup = (yyvsp[(1) - (1)].expr).setup;
+            (yyval.plist).code  = strdup((yyvsp[(1) - (1)].expr).code);     /* no separator yet         */
+            (yyval.plist).count = 1;
+        ;}
+    break;
+
+  case 37:
+
+/* Line 1455 of yacc.c  */
+#line 589 "parser.y"
+    {                       /* append item, join with ‘|’          */
+            (yyval.plist).setup = cat2((yyvsp[(1) - (3)].plist).setup, (yyvsp[(3) - (3)].expr).setup);
+
+            size_t len = strlen((yyvsp[(1) - (3)].plist).code) + strlen((yyvsp[(3) - (3)].expr).code) + 2; /* '|' + NUL */
+            char *code = (char*)malloc(len);
+            sprintf(code, "%s|%s", (yyvsp[(1) - (3)].plist).code, (yyvsp[(3) - (3)].expr).code);
+
+            free((yyvsp[(1) - (3)].plist).code);
+            (yyval.plist).code  = code;
+            (yyval.plist).count = (yyvsp[(1) - (3)].plist).count + 1;
+        ;}
+    break;
+
+  case 38:
+
+/* Line 1455 of yacc.c  */
+#line 605 "parser.y"
+    {
+        /* 1. emit all setup code from sub‑expressions */
+        char *buf  = cat2((yyvsp[(4) - (5)].plist).setup, "");
+        char *line = (char*)malloc(1024);
+
+        /* 2. heading — prints the label and a colon (no newline) */
+        sprintf(line, "std::cout << \"%s: \";\n", (yyvsp[(2) - (5)].sval));
+        buf = cat2(buf, line);
+
+        /* 3. iterate over the saved expressions, split on ‘|’          */
+        /*    we know how many there are from $4.count                   */
+        char *list_copy = strdup((yyvsp[(4) - (5)].plist).code);          /* strtok mutates    */
+        char *token     = strtok(list_copy, "|");
+        int   idx       = 0;                        /* 1‑based position  */
+
+        while (token) {
+            ++idx;
+            /* trim leading blanks the user may have typed after ','     */
+            while (*token == ' ') ++token;
+
+            bool last = (idx == (yyvsp[(4) - (5)].plist).count);          /* last expression?  */
+
+            if (is_vector_expr(token)) {
+                /* vector: we want newline at the end no matter what     */
+                sprintf(line,
+                        "print_vector(\"\", %s, %d);\n",
+                        token, current_vec_size);
+            } else {
+                /* scalar: newline only if this is the last item         */
+                if (last)
+                    sprintf(line, "std::cout << %s << std::endl;\n", token);
+                else
+                    sprintf(line, "std::cout << %s << \" \";\n",  token);
+            }
+            buf = cat2(buf, line);
+            token = strtok(NULL, "|");
+        }
+
+        (yyval.blockcode) = buf;
+
+        free(list_copy);
+        free((yyvsp[(4) - (5)].plist).code);
+        free((yyvsp[(4) - (5)].plist).setup);
+    ;}
     break;
 
 
 
 /* Line 1455 of yacc.c  */
-#line 1718 "y.tab.c"
+#line 2178 "parser.tab.c"
       default: break;
     }
   YY_SYMBOL_PRINT ("-> $$ =", yyr1[yyn], &yyval, &yyloc);
@@ -1926,491 +2386,22 @@ yyreturn:
 
 
 /* Line 1675 of yacc.c  */
-#line 151 "vlang.y"
+#line 652 "parser.y"
+ /* ============================  driver  ============================ */
 
+void yyerror(const char *s){ fprintf(stderr,"Parse error: %s\n",s); }
 
-void yyerror(const char *s) {
-    fprintf(stderr, "error: %s\n", s);
+int main(){
+    out=fopen("output.cpp","w");
+    if(!out){ perror("output.cpp"); return 1; }
+    fprintf(out,
+        "#include <iostream>\n"
+        "#include <cstring>\n"
+        "#include \"runtime.hpp\"\n"
+        "int main(){\n");
+    yyparse();
+    fprintf(out,"return 0;\n}\n");
+    fclose(out);
+    return 0;
 }
 
-int main(int argc, char *argv[]) {
-    extern FILE *yyin;
-    if (argc > 1) {
-        FILE *file = fopen(argv[1], "r");
-        if (!file) {
-            fprintf(stderr, "Cannot open file: %s\n", argv[1]);
-            return 1;
-        }
-        yyin = file;
-    }
-    
-    int result = yyparse();
-    if (result == 0) {
-        // Generate C code to a temporary file
-        FILE *c_file = fopen("temp_output.c", "w");
-        if (!c_file) {
-            fprintf(stderr, "Cannot create temporary C file\n");
-            return 1;
-        }
-        
-        // Write C code to file
-        fprintf(c_file, "#include <stdio.h>\n");
-        fprintf(c_file, "#include <stdlib.h>\n");
-        fprintf(c_file, "#include <string.h>\n\n");
-        
-        fprintf(c_file, "int main() {\n");
-        
-        // Generate code from AST with smart declaration handling
-        if (root_node) {
-            // Set global file pointer for code generation
-            output_file = c_file;
-            generate_code_with_declarations(root_node);
-        }
-        
-        fprintf(c_file, "    return 0;\n");
-        fprintf(c_file, "}\n");
-        
-        fclose(c_file);
-        
-        // Compile the C code
-        fprintf(stderr, "Compiling generated C code...\n");
-        int compile_result = system("gcc temp_output.c -o temp_program.exe");
-        if (compile_result != 0) {
-            fprintf(stderr, "Compilation failed!\n");
-            return 1;
-        }
-        
-        // Run the executable
-        fprintf(stderr, "Running compiled program:\n");
-        fprintf(stderr, "------------------------\n");
-        int run_result = system("temp_program.exe");
-        
-        // Clean up temporary files
-        remove("temp_output.c");
-        remove("temp_program.exe");
-        
-        return run_result;
-    }
-    return result;
-}
-
-// Code generation functions implementation
-void generate_code(ast_node *node) {
-    if (!node) return;
-    
-    switch (node->type) {
-        case SEMI_NODE:
-            generate_code(node->left);
-            generate_code(node->right);
-            break;
-        case ASSIGN_NODE:
-            generate_assignment(node);
-            break;
-        case IF_NODE:
-            generate_if(node);
-            break;
-        case LOOP_NODE:
-            generate_loop(node);
-            break;
-        case PRINT_NODE:
-            generate_print(node);
-            break;
-        default:
-            break;
-    }
-}
-
-void generate_assignment(ast_node *node) {
-    if (node->left->type == ID_NODE) {
-        // Check if it's a vector assignment
-        symbol *sym = get_symbol(node->left->name);
-        if (sym && sym->type == VEC_TYPE && node->right->type == VEC_LITERAL_NODE) {
-            // Vector literal assignment: v = [1,2,3,4,5]
-            generate_vec_assignment_with_declaration(node->left->name, node->right, sym->size);
-        } else if (sym && sym->type == VEC_TYPE && node->right->type == INT_LITERAL_NODE) {
-            // Scalar to vector assignment: v = 5 (assigns 5 to all elements)
-            declare_variable_if_needed(node->left->name);
-            fprintf(output_file, "    for(int i = 0; i < %d; i++) %s[i] = ", sym->size, node->left->name);
-            generate_expression(node->right);
-            fprintf(output_file, ";\n");
-        } else if (sym && sym->type == VEC_TYPE && node->right->type == ADD_NODE) {
-            // Vector addition assignment: v3 = v1+v2
-            if (node->right->left->type == ID_NODE && node->right->right->type == ID_NODE) {
-                symbol *left_sym = get_symbol(node->right->left->name);
-                symbol *right_sym = get_symbol(node->right->right->name);
-                if (left_sym && right_sym && left_sym->type == VEC_TYPE && right_sym->type == VEC_TYPE) {
-                    declare_variable_if_needed(node->left->name);
-                    fprintf(output_file, "    for(int i = 0; i < %d; i++) %s[i] = %s[i] + %s[i];\n", 
-                            sym->size, node->left->name, node->right->left->name, node->right->right->name);
-                    return;
-                }
-            }
-            // Fall through to regular vector assignment
-            declare_variable_if_needed(node->left->name);
-            fprintf(output_file, "    for(int i = 0; i < %d; i++) %s[i] = ", sym->size, node->left->name);
-            generate_expression(node->right);
-            fprintf(output_file, ";\n");
-        } else if (sym && sym->type == VEC_TYPE) {
-            // Vector assignment with expression (like v1 = 2*x)
-            declare_variable_if_needed(node->left->name);
-            fprintf(output_file, "    for(int i = 0; i < %d; i++) %s[i] = ", sym->size, node->left->name);
-            generate_expression(node->right);
-            fprintf(output_file, ";\n");
-        } else {
-            // Simple scalar assignment: x = expression
-            generate_scalar_assignment_with_declaration(node->left->name, node->right);
-        }
-    } else if (node->left->type == COLON_NODE) {
-        // Vector indexing assignment: v:i = expression
-        fprintf(output_file, "    %s[", node->left->left->name);
-        generate_expression(node->left->right);
-        fprintf(output_file, "] = ");
-        generate_expression(node->right);
-        fprintf(output_file, ";\n");
-    }
-}
-
-void generate_expression(ast_node *node) {
-    if (!node) return;
-    
-    switch (node->type) {
-        case INT_LITERAL_NODE:
-            fprintf(output_file, "%s", node->name);
-            break;
-        case ID_NODE:
-            fprintf(output_file, "%s", node->name);
-            break;
-        case ADD_NODE:
-            // Check if this is vector addition
-            if (node->left->type == ID_NODE && node->right->type == ID_NODE) {
-                symbol *left_sym = get_symbol(node->left->name);
-                symbol *right_sym = get_symbol(node->right->name);
-                if (left_sym && right_sym && left_sym->type == VEC_TYPE && right_sym->type == VEC_TYPE) {
-                    // This is vector addition - should be handled at assignment level
-                    fprintf(output_file, "/* vector addition: %s + %s */", node->left->name, node->right->name);
-                    return;
-                }
-            }
-            fprintf(output_file, "(");
-            generate_expression(node->left);
-            fprintf(output_file, " + ");
-            generate_expression(node->right);
-            fprintf(output_file, ")");
-            break;
-        case SUB_NODE:
-            fprintf(output_file, "(");
-            generate_expression(node->left);
-            fprintf(output_file, " - ");
-            generate_expression(node->right);
-            fprintf(output_file, ")");
-            break;
-        case MUL_NODE:
-            fprintf(output_file, "(");
-            generate_expression(node->left);
-            fprintf(output_file, " * ");
-            generate_expression(node->right);
-            fprintf(output_file, ")");
-            break;
-        case DIV_NODE:
-            fprintf(output_file, "(");
-            generate_expression(node->left);
-            fprintf(output_file, " / ");
-            generate_expression(node->right);
-            fprintf(output_file, ")");
-            break;
-        case VEC_LITERAL_NODE:
-            generate_vec_literal(node);
-            break;
-        case COLON_NODE:
-            // Vector indexing: v:i
-            fprintf(output_file, "%s[", node->left->name);
-            generate_expression(node->right);
-            fprintf(output_file, "]");
-            break;
-        case AT_NODE:
-            // Dot product - generate inline calculation
-            generate_dot_product(node);
-            break;
-        default:
-            break;
-    }
-}
-
-void generate_vec_literal(ast_node *node) {
-    // For vector literals like [1,2,3], we need to assign each element
-    // This is a simplified version - in practice you'd need to handle the target variable
-    fprintf(output_file, "/* vector literal */");
-}
-
-void generate_print(ast_node *node) {
-    fprintf(output_file, "    printf(\"%s: ", node->left->name);
-    
-    // Handle expression list - check for comma-separated expressions
-    ast_node *expr = node->right;
-    
-    if (expr->type == COMMA_NODE) {
-        // Multiple expressions to print
-        generate_print_expressions(expr);
-    } else if (expr->type == ID_NODE) {
-        symbol *sym = get_symbol(expr->name);
-        if (sym && sym->type == VEC_TYPE) {
-            // Print vector
-            fprintf(output_file, "[");
-            for (int i = 0; i < sym->size; i++) {
-                if (i > 0) fprintf(output_file, ", ");
-                fprintf(output_file, "%%d");
-            }
-            fprintf(output_file, "]\\n\"");
-            for (int i = 0; i < sym->size; i++) {
-                fprintf(output_file, ", %s[%d]", expr->name, i);
-            }
-            fprintf(output_file, ");\n");
-        } else {
-            // Print scalar
-            fprintf(output_file, "%%d\\n\", ");
-            generate_expression(expr);
-            fprintf(output_file, ");\n");
-        }
-    } else {
-        // Print expression result
-        fprintf(output_file, "%%d\\n\", ");
-        generate_expression(expr);
-        fprintf(output_file, ");\n");
-    }
-}
-
-void generate_if(ast_node *node) {
-    fprintf(output_file, "    if (");
-    generate_expression(node->left);
-    fprintf(output_file, ") {\n");
-    generate_code_with_declarations(node->right);
-    fprintf(output_file, "    }\n");
-}
-
-void generate_loop(ast_node *node) {
-    int loop_label = label_count++;
-    fprintf(output_file, "    for (int loop_var_%d = 0; loop_var_%d < ", loop_label, loop_label);
-    generate_expression(node->left);
-    fprintf(output_file, "; loop_var_%d++) {\n", loop_label);
-    generate_code_with_declarations(node->right);
-    fprintf(output_file, "    }\n");
-}
-
-void generate_vec_assignment(char *var_name, ast_node *vec_node, int size) {
-    // Generate assignment for vector literal like v = [1,2,3,4,5]
-    int index = 0;
-    ast_node *current = vec_node->left; // First element
-    
-    // Assign first element
-    fprintf(output_file, "    %s[%d] = %s;\n", var_name, index++, current->name);
-    
-    // Assign remaining elements from the list
-    current = vec_node->right; // The int_list part
-    while (current && index < size) {
-        if (current->type == COMMA_NODE) {
-            fprintf(output_file, "    %s[%d] = %s;\n", var_name, index++, current->right->name);
-            current = current->left;
-        } else {
-            fprintf(output_file, "    %s[%d] = %s;\n", var_name, index++, current->name);
-            break;
-        }
-    }
-}
-
-void declare_variable_if_needed(char *var_name) {
-    symbol *sym = get_symbol(var_name);
-    if (!sym) return;
-    
-    // Find symbol index
-    int sym_index = -1;
-    for (int i = 0; i < symbol_count; i++) {
-        if (strcmp(symbol_table[i].name, var_name) == 0) {
-            sym_index = i;
-            break;
-        }
-    }
-    
-    if (sym_index >= 0 && !declared_vars[sym_index]) {
-        if (sym->type == SCL_TYPE) {
-            fprintf(output_file, "    int %s;\n", var_name);
-        } else if (sym->type == VEC_TYPE) {
-            fprintf(output_file, "    int %s[%d];\n", var_name, sym->size);
-        }
-        declared_vars[sym_index] = 1;
-    }
-}
-
-void generate_code_with_declarations(ast_node *node) {
-    if (!node) return;
-    
-    switch (node->type) {
-        case SEMI_NODE:
-            generate_code_with_declarations(node->left);
-            generate_code_with_declarations(node->right);
-            break;
-        case ASSIGN_NODE:
-            generate_assignment(node);
-            break;
-        case IF_NODE:
-            generate_if(node);
-            break;
-        case LOOP_NODE:
-            generate_loop(node);
-            break;
-        case PRINT_NODE:
-            generate_print(node);
-            break;
-        default:
-            break;
-    }
-}
-
-void generate_scalar_assignment_with_declaration(char *var_name, ast_node *expr_node) {
-    symbol *sym = get_symbol(var_name);
-    if (!sym) return;
-    
-    // Find symbol index
-    int sym_index = -1;
-    for (int i = 0; i < symbol_count; i++) {
-        if (strcmp(symbol_table[i].name, var_name) == 0) {
-            sym_index = i;
-            break;
-        }
-    }
-    
-    if (sym_index >= 0 && !declared_vars[sym_index]) {
-        // Combine declaration and initialization
-        fprintf(output_file, "    int %s = ", var_name);
-        generate_expression(expr_node);
-        fprintf(output_file, ";\n");
-        declared_vars[sym_index] = 1;
-    } else {
-        // Variable already declared, just assign
-        fprintf(output_file, "    %s = ", var_name);
-        generate_expression(expr_node);
-        fprintf(output_file, ";\n");
-    }
-}
-
-void generate_vec_assignment_with_declaration(char *var_name, ast_node *vec_node, int size) {
-    symbol *sym = get_symbol(var_name);
-    if (!sym) return;
-    
-    // Find symbol index
-    int sym_index = -1;
-    for (int i = 0; i < symbol_count; i++) {
-        if (strcmp(symbol_table[i].name, var_name) == 0) {
-            sym_index = i;
-            break;
-        }
-    }
-    
-    if (sym_index >= 0 && !declared_vars[sym_index]) {
-        // Generate vector declaration with initialization
-        fprintf(output_file, "    int %s[%d] = {", var_name, size);
-        
-        // Extract values from AST - need to collect all values first to print in correct order
-        char *values[size];
-        int value_count = 0;
-        
-        // Get first element
-        ast_node *current = vec_node->left;
-        values[value_count++] = current->name;
-        
-        // Get remaining elements from the int_list
-        current = vec_node->right;
-        collect_int_list_values(current, values, &value_count, size);
-        
-        // Print all values in correct order
-        for (int i = 0; i < value_count && i < size; i++) {
-            if (i > 0) fprintf(output_file, ", ");
-            fprintf(output_file, "%s", values[i]);
-        }
-        
-        fprintf(output_file, "};\n");
-        declared_vars[sym_index] = 1;
-    } else {
-        // Variable already declared, use individual assignments
-        generate_vec_assignment(var_name, vec_node, size);
-    }
-}
-
-void collect_int_list_values(ast_node *node, char **values, int *count, int max_size) {
-    if (!node || *count >= max_size) return;
-    
-    if (node->type == COMMA_NODE) {
-        // Recursively collect from left side first (this maintains order)
-        collect_int_list_values(node->left, values, count, max_size);
-        // Then add the right side value
-        if (node->right && *count < max_size) {
-            values[(*count)++] = node->right->name;
-        }
-    } else {
-        // Single value node
-        values[(*count)++] = node->name;
-    }
-}
-
-void generate_dot_product(ast_node *node) {
-    // Generate dot product calculation: left @ right
-    // This creates a temporary variable and calculates the sum
-    int temp_id = temp_var_count++;
-    
-    // Get vector sizes - assume both vectors have same size for now
-    symbol *left_sym = NULL, *right_sym = NULL;
-    int vec_size = 0;
-    
-    if (node->left->type == ID_NODE) {
-        left_sym = get_symbol(node->left->name);
-        if (left_sym && left_sym->type == VEC_TYPE) {
-            vec_size = left_sym->size;
-        }
-    }
-    
-    if (node->right->type == ID_NODE) {
-        right_sym = get_symbol(node->right->name);
-    }
-    
-    // Generate inline dot product calculation
-    fprintf(output_file, "({int dot_sum_%d = 0; for(int dot_i_%d = 0; dot_i_%d < %d; dot_i_%d++) { dot_sum_%d += ", 
-            temp_id, temp_id, temp_id, vec_size, temp_id, temp_id);
-    
-    generate_expression(node->left);
-    fprintf(output_file, "[dot_i_%d] * ", temp_id);
-    generate_expression(node->right);
-    fprintf(output_file, "[dot_i_%d]; } dot_sum_%d; })", temp_id, temp_id);
-}
-
-void generate_print_expressions(ast_node *node) {
-    // Handle comma-separated expressions in print statements
-    // For now, let's simplify and just print the first expression
-    if (node->type == COMMA_NODE) {
-        // Print first expression
-        if (node->left->type == ID_NODE) {
-            symbol *sym = get_symbol(node->left->name);
-            if (sym && sym->type == VEC_TYPE) {
-                // Print vector
-                fprintf(output_file, "[");
-                for (int i = 0; i < sym->size; i++) {
-                    if (i > 0) fprintf(output_file, ", ");
-                    fprintf(output_file, "%%d");
-                }
-                fprintf(output_file, "]\\n\"");
-                for (int i = 0; i < sym->size; i++) {
-                    fprintf(output_file, ", %s[%d]", node->left->name, i);
-                }
-                fprintf(output_file, ");\n");
-            } else {
-                // Print scalar
-                fprintf(output_file, "%%d\\n\", ");
-                generate_expression(node->left);
-                fprintf(output_file, ");\n");
-            }
-        } else {
-            // Print expression result
-            fprintf(output_file, "%%d\\n\", ");
-            generate_expression(node->left);
-            fprintf(output_file, ");\n");
-        }
-    }
-}

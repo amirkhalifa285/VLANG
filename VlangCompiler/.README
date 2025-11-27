@@ -1,0 +1,61 @@
+Vlang Compiler (Vlang → C++ Translator)
+Amir Khalifa 
+
+How It Works
+Lexical Analysis: implemented via lexer.l (Flex)
+
+Parsing and Code Generation: handled by parser.y (Bison/Yacc)
+
+C++ Code Output: emitted as output.cpp
+
+Final Executable: compiled using G++ into program.exe
+
+🛠️ Build Instructions
+Prerequisites
+Windows OS (tested)
+
+Flex & Bison for Windows
+
+G++ (e.g., via MinGW)
+
+Compile the Compiler
+
+make
+Generate C Output from Vlang Program
+
+make generate
+This will compile the vlang compiler and run:
+
+
+vlang.exe < example.vlang
+The resulting output.cpp is written to disk.
+
+Compile the C++ Output
+
+g++ -Wall -std=c++11 -o program.exe output.cpp runtime.cpp
+Or use the shortcut:
+
+
+make test
+Which performs:
+
+Compilation of the compiler
+
+Translation of the example
+
+Compilation of the C++ code
+
+Running the final program.exe
+
+📄 File Structure
+File	Description
+lexer.l	Flex lexer for tokenizing Vlang syntax
+parser.y	Bison parser with C++ code generation
+runtime.cpp/hpp	Runtime functions for vector operations
+example.vlang	Sample Vlang source code
+output.cpp	Generated C++ source code
+program.exe	Final executable of compiled program
+Makefile	Automates the build/test process
+
+
+
